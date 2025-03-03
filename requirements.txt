@@ -1,0 +1,10 @@
+tqdm
+pyyaml
+torch>=2.4.0
+numpy>=2.0.0
+pydantic>=2.9.0
+torchaudio>=2.4.0
+tensorboard>=2.4.1
+torchvision>=0.19.0
+torch-tb-profiler>=0.2.1
+opencv-python>=4.10.0
