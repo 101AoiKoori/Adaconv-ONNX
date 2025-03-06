@@ -4,7 +4,6 @@ import yaml
 from hyperparam import Hyperparameter
 from trainer import Trainer
 
-
 def parse_opt():
     parser = argparse.ArgumentParser()
 
@@ -31,7 +30,6 @@ def parse_opt():
 
     return opt
 
-
 def main(config: str, data_path: str, logdir: str):
     with open(config, "r", encoding="utf-8") as f:
         config_data = yaml.safe_load(f)
@@ -49,7 +47,6 @@ def main(config: str, data_path: str, logdir: str):
     print(config.model_dump_json(indent=4))
 
     trainer.train()
-
 
 if __name__ == "__main__":
     opt = parse_opt()

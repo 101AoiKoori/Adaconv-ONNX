@@ -13,12 +13,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
 
-
 class Trainer:
-    """
-    Model trainer class
-    """
-
     def __init__(self, hyper_param: Hyperparameter):
         self.hyper_param = hyper_param
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -30,6 +25,8 @@ class Trainer:
             image_shape=tuple(self.hyper_param.image_shape),
             style_dim=self.hyper_param.style_dim,
             style_kernel=self.hyper_param.style_kernel,
+            groups=self.hyper_param.groups,  # 传递 groups 参数
+            fixed_batch_size=self.hyper_param.fixed_batch_size  # 传递 fixed_batch_size 参数
         ).to(self.device)
 
         self.content_loss_fn = MSEContentLoss()
@@ -139,8 +136,8 @@ class Trainer:
         self.writer.add_graph(
             self.model,
             (
-                torch.randn(1, 3, *self.hyper_param.image_shape).to(self.device),
-                torch.randn(1, 3, *self.hyper_param.image_shape).to(self.device),
+                torch.randn(self.hyper_param.fixed_batch_size, 3, *self.hyper_param.image_shape).to(self.device),
+                torch.randn(self.hyper_param.fixed_batch_size, 3, *self.hyper_param.image_shape).to(self.device),
             ),
         )
 
@@ -271,9 +268,7 @@ class Trainer:
     def _step(
         self, contents: torch.Tensor, styles: torch.Tensor
     ) -> tuple[torch.Tensor]:
-        x, content_feats, style_feats, x_feats = self.model(
-            contents, styles, return_features=True
-        )
+        x, content_feats, style_feats, x_feats = self.model.forward_with_features(contents, styles)
         content_loss = self.content_loss_fn(content_feats[-1], x_feats[-1])
         style_loss = self.style_loss_fn(style_feats, x_feats)
         loss = content_loss + (style_loss * self.hyper_param.style_weight)

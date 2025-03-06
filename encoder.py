@@ -26,7 +26,7 @@ class Encoder(nn.Module):
         for block in self.blocks:
             for layer in block:
                 if isinstance(layer, nn.Conv2d):
-                    layer.padding_mode = "reflect"
+                    layer.padding_mode = "zeros"
                 elif isinstance(layer, nn.ReLU):
                     layer.inplace = False
 
