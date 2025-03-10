@@ -4,21 +4,23 @@ from torch.nn import functional as F
 
 # ---------------- GlobalStyleEncoder ----------------
 class GlobalStyleEncoder(nn.Module):
-    def __init__(self, style_feat_shape: tuple[int], style_descriptor_shape: tuple[int], fixed_batch_size: int) -> None:
+    def __init__(
+            self, style_feat_shape: tuple[int], style_descriptor_shape: tuple[int], fixed_batch_size: int
+        ) -> None:
         super().__init__()
         self.style_feat_shape = style_feat_shape
         self.style_descriptor_shape = style_descriptor_shape
         self.fixed_batch_size = fixed_batch_size
-        
         channels = style_feat_shape[0]
+
         self.style_encoder = nn.Sequential(
-            nn.Conv2d(channels, channels, kernel_size=3, padding=1, padding_mode="zeros"),
+            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="zeros"),
             nn.AvgPool2d(2, 2),
             nn.LeakyReLU(),
-            nn.Conv2d(channels, channels, kernel_size=3, padding=1, padding_mode="zeros"),
+            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="zeros"),
             nn.AvgPool2d(2, 2),
             nn.LeakyReLU(),
-            nn.Conv2d(channels, channels, kernel_size=3, padding=1, padding_mode="zeros"),
+            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="zeros"),
             nn.AvgPool2d(2, 2),
             nn.LeakyReLU(),
         )
@@ -57,7 +59,7 @@ class KernelPredictor(nn.Module):
 
         self.depthwise_conv_kernel_predictor = nn.Conv2d(
             in_channels=self.style_dim,
-            out_channels=out_channels * (in_channels // groups),
+            out_channels=self.out_channels * (self.in_channels // self.groups),
             kernel_size=3,
             padding=1,
             padding_mode="zeros"
@@ -67,7 +69,7 @@ class KernelPredictor(nn.Module):
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Conv2d(
                 in_channels=self.style_dim,
-                out_channels=out_channels * (out_channels // groups),
+                out_channels=self.out_channels * (self.out_channels // self.groups),
                 kernel_size=1,
             ),
         )
@@ -132,32 +134,52 @@ class AdaConv2D(nn.Module):
         std = torch.std(x, dim=[2, 3], keepdim=True) + self._epsilon
         return (x - mean) / std
 
-    def forward(self, x: torch.Tensor, dw_kernels: torch.Tensor, pw_kernels: torch.Tensor, biases: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, 
+        x: torch.Tensor, 
+        dw_kernels: torch.Tensor, 
+        pw_kernels: torch.Tensor, 
+        biases: torch.Tensor
+    ) -> torch.Tensor:
         B = self.fixed_batch_size
         x = self._normalize(x)
         K = dw_kernels.shape[-1]
         padding = (K - 1) // 2
         
         # 静态计算输出尺寸
-        H_out = self.fixed_h + 2 * padding - (K - 1)  # 新增：固定高度计算
-        W_out = self.fixed_w + 2 * padding - (K - 1)  # 新增：固定宽度计算
+        H_out = self.fixed_h + 2 * padding - (K - 1)
+        W_out = self.fixed_w + 2 * padding - (K - 1)
         
+        # 准备输入和卷积核
         x_padded = F.pad(x, (padding, padding, padding, padding), mode="constant", value=0)
         x_merged = x_padded.reshape(1, B * self.in_channels, x_padded.shape[2], x_padded.shape[3])
         dw_kernels_merged = dw_kernels.reshape(B * self.out_channels, self.in_channels // self.groups, K, K)
+        pw_kernels_merged = pw_kernels.reshape(B * self.out_channels, self.out_channels // self.groups, 1, 1)
+        
+        # 执行深度可分离卷积
+        output = self._depthwise_separable_conv2D(x_merged, dw_kernels_merged, pw_kernels_merged, biases, B, H_out, W_out)
+        
+        return output
+
+    def _depthwise_separable_conv2D(
+        self,
+        x: torch.Tensor,
+        dw_kernel: torch.Tensor,
+        pw_kernel: torch.Tensor,
+        bias: torch.Tensor,
+        B: int,
+        H_out: int,
+        W_out: int
+    ) -> torch.Tensor:
         conv_groups = B * self.groups
-
-        depthwise_out = F.conv2d(x_merged, dw_kernels_merged, groups=conv_groups, padding=0)
-        depthwise_out = depthwise_out.reshape(B, self.out_channels, H_out, W_out)  # 使用固定高度和宽度
-
-        pw_kernels_merged = pw_kernels.reshape(
-            B * self.out_channels, 
-            self.out_channels // self.groups, 
-            1, 
-            1
-        )
+        
+        # 深度卷积
+        depthwise_out = F.conv2d(x, dw_kernel, groups=conv_groups, padding=0)
+        depthwise_out = depthwise_out.reshape(B, self.out_channels, H_out, W_out)
+        
+        # 逐点卷积
         depthwise_merged = depthwise_out.reshape(1, B * self.out_channels, H_out, W_out)
-        output = F.conv2d(depthwise_merged, pw_kernels_merged, bias=biases, groups=conv_groups)
+        output = F.conv2d(depthwise_merged, pw_kernel, bias=bias, groups=conv_groups)
         output = output.reshape(B, self.out_channels, H_out, W_out)
         
         return output
