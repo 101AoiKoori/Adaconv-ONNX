@@ -1,14 +1,28 @@
-batch_size: 8
-image_shape:
-- 256
-- 256
-learning_rate: 0.0001
-log_step: 10
-max_ckpts: 3
-num_iteration: 160000
-resize_size: 512
-save_step: 1000
+# Basic model parameters
+image_shape: [256, 256]
 style_dim: 512
 style_kernel: 3
 style_weight: 100.0
+
+# Groups configuration - choose one approach:
+# Option 1: Auto-calculate groups from ratios (default behavior)
+groups_ratios: [1.0, 0.5, 0.25, 0.125]
+groups: null
+groups_list: null
+
+# Training parameters
+batch_size: 8
+learning_rate: 0.0001
+num_iteration: 160000
+
+# Export configuration
+fixed_batch_size: 32    # For static computational graph
+use_fixed_size: true  # For static computational graph
+dynamic_mode: false    # For dynamic ONNX export
+
+# Logging parameters
+log_step: 10
+save_step: 1000
 summary_step: 100
+max_ckpts: 3
+resize_size: 512

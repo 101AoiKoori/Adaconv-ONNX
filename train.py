@@ -33,8 +33,8 @@ def parse_opt():
 def main(config: str, data_path: str, logdir: str):
     with open(config, "r", encoding="utf-8") as f:
         config_data = yaml.safe_load(f)
-    config_data.update({"data_path": ""})
-    config_data.update({"logdir": ""})
+    config_data.update({"data_path": data_path})
+    config_data.update({"logdir": logdir})
 
     config: Hyperparameter = Hyperparameter(**config_data)
     if data_path:

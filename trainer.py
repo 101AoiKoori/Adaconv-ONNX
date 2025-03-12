@@ -21,12 +21,31 @@ class Trainer:
         print(f"Training Initialized -> device: {self.device}")
 
     def setup(self):
+        # 处理图像尺寸参数
+        if isinstance(self.hyper_param.image_size, int):
+            image_shape = (self.hyper_param.image_size, self.hyper_param.image_size)
+        else:
+            image_shape = self.hyper_param.image_shape
+        
+        # 处理 groups 参数
+        groups = self.hyper_param.groups
+        if groups is None and self.hyper_param.groups_list is not None:
+            groups = self.hyper_param.groups_list
+        elif groups is None and self.hyper_param.groups_ratios is not None:
+            # 基于比例计算分组
+            channels = [512, 256, 128, 64]
+            groups = [max(1, int(c * ratio)) for c, ratio in zip(channels, self.hyper_param.groups_ratios)]
+
+        if self.hyper_param.fixed_batch_size is None:
+            self.hyper_param.fixed_batch_size = self.hyper_param.batch_size  # 使用训练批大小
+            
         self.model = StyleTransfer(
-            image_shape=tuple(self.hyper_param.image_shape),
+            image_shape=image_shape,
             style_dim=self.hyper_param.style_dim,
             style_kernel=self.hyper_param.style_kernel,
-            groups=self.hyper_param.groups,  # 传递 groups 参数
-            fixed_batch_size=self.hyper_param.fixed_batch_size  # 传递 fixed_batch_size 参数
+            groups=groups,
+            fixed_batch_size=self.hyper_param.fixed_batch_size,
+            use_fixed_size=self.hyper_param.use_fixed_size
         ).to(self.device)
 
         self.content_loss_fn = MSEContentLoss()
@@ -133,11 +152,15 @@ class Trainer:
         self.writer = SummaryWriter(tensorboard_dir)
         # for makegrid nrows
         self.nrow = self.hyper_param.batch_size // 2
+        
+        # 添加这个检查，如果fixed_batch_size为None，则使用batch_size
+        batch_size_for_graph = self.hyper_param.fixed_batch_size if self.hyper_param.fixed_batch_size is not None else self.hyper_param.batch_size
+        
         self.writer.add_graph(
             self.model,
             (
-                torch.randn(self.hyper_param.fixed_batch_size, 3, *self.hyper_param.image_shape).to(self.device),
-                torch.randn(self.hyper_param.fixed_batch_size, 3, *self.hyper_param.image_shape).to(self.device),
+                torch.randn(batch_size_for_graph, 3, *self.hyper_param.image_shape).to(self.device),
+                torch.randn(batch_size_for_graph, 3, *self.hyper_param.image_shape).to(self.device),
             ),
         )
 

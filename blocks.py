@@ -5,7 +5,7 @@ from torch.nn import functional as F
 # ---------------- GlobalStyleEncoder ----------------
 class GlobalStyleEncoder(nn.Module):
     def __init__(
-            self, style_feat_shape: tuple[int], style_descriptor_shape: tuple[int], fixed_batch_size: int
+            self, style_feat_shape: tuple[int], style_descriptor_shape: tuple[int], fixed_batch_size: int = None
         ) -> None:
         super().__init__()
         self.style_feat_shape = style_feat_shape
@@ -24,18 +24,25 @@ class GlobalStyleEncoder(nn.Module):
             nn.AvgPool2d(2, 2),
             nn.LeakyReLU(),
         )
-        in_features = int (style_feat_shape[0] * (style_feat_shape[1] // 8) * (style_feat_shape[2] // 8))
-        out_features = int (style_descriptor_shape[0] * style_descriptor_shape[1] * style_descriptor_shape[2])
+        in_features = int(style_feat_shape[0] * (style_feat_shape[1] // 8) * (style_feat_shape[2] // 8))
+        out_features = int(style_descriptor_shape[0] * style_descriptor_shape[1] * style_descriptor_shape[2])
         self.fc = nn.Linear(in_features, out_features)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Get the actual batch size from input or use fixed value for export
+        batch_size = self.fixed_batch_size if self.fixed_batch_size is not None else x.size(0)
+        
         x = self.style_encoder(x)
         x = torch.flatten(x, start_dim=1)
         w = self.fc(x)
-        w = w.reshape(self.fixed_batch_size, 
-                      self.style_descriptor_shape[0],
-                      self.style_descriptor_shape[1],
-                      self.style_descriptor_shape[2])
+        
+        # Reshape to final descriptor shape
+        w = w.reshape(
+            batch_size,
+            self.style_descriptor_shape[0],
+            self.style_descriptor_shape[1],
+            self.style_descriptor_shape[2]
+        )
         return w
 
 # ---------------- KernelPredictor ----------------
@@ -47,15 +54,15 @@ class KernelPredictor(nn.Module):
         out_channels: int,
         groups: int, 
         style_kernel: int, 
-        fixed_batch_size: int
+        fixed_batch_size: int = None
     ):
         super().__init__()
         self.style_dim = style_dim
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.style_kernel = style_kernel
-        self.groups = groups # 使用固定groups
-        self.fixed_batch_size = fixed_batch_size # 使用固定batch_size
+        self.groups = groups
+        self.fixed_batch_size = fixed_batch_size
 
         self.depthwise_conv_kernel_predictor = nn.Conv2d(
             in_channels=self.style_dim,
@@ -78,22 +85,26 @@ class KernelPredictor(nn.Module):
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Conv2d(
                 in_channels=self.style_dim,
-                out_channels=out_channels,  # 输出形状为 [B, C_out, 1, 1]
+                out_channels=out_channels,
                 kernel_size=1,
             ),
         )
 
     def forward(self, w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        B = self.fixed_batch_size  # 使用固定batch size，而非动态获取
+        # Get batch size from input or use fixed value for export
+        B = self.fixed_batch_size if self.fixed_batch_size is not None else w.size(0)
+        
+        # Predict depthwise conv kernel: shape [B, C_out, C_in//groups, K, K]
         dw_kernel = self.depthwise_conv_kernel_predictor(w)
         dw_kernel = dw_kernel.reshape(
-            B,  # 使用固定值
+            B,
             self.out_channels,
             self.in_channels // self.groups,
             self.style_kernel,
             self.style_kernel,
         )
-        # 预测点卷积核：形状 [B, C_out, out_channels//groups, 1, 1]
+        
+        # Predict pointwise conv kernel: shape [B, C_out, C_out//groups, 1, 1]
         pw_kernel = self.pointwise_conv_kernel_predictor(w)
         pw_kernel = pw_kernel.reshape(
             B,
@@ -102,31 +113,37 @@ class KernelPredictor(nn.Module):
             1,
             1,
         )
-        # 预测偏置：形状 [B, C_out]，拉平成 [B * C_out]
+        
+        # Predict bias: shape [B, C_out], flattened to [B * C_out]
         bias = self.bias_predictor(w)
         bias = bias.reshape(B, self.out_channels).reshape(-1)
+        
         return (dw_kernel, pw_kernel, bias)
 
 # ---------------- AdaConv2D ----------------
 class AdaConv2D(nn.Module):
-    def __init__(self, 
-            in_channels: int, 
-            out_channels: int, 
-            groups: int, 
-            fixed_batch_size: int, 
-            fixed_hw: tuple[int, int]
-        ): 
+    def __init__(
+        self, 
+        in_channels: int, 
+        out_channels: int, 
+        groups: int, 
+        fixed_batch_size: int = None, 
+        fixed_hw: tuple[int, int] = None
+    ): 
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.groups = groups
         self.fixed_batch_size = fixed_batch_size
-        self.fixed_h = fixed_hw[0]  # 新增：固定高度
-        self.fixed_w = fixed_hw[1]  # 新增：固定宽度
-
-        self.output_h = self.fixed_h  # 根据实际卷积操作调整
-        self.output_w = self.fixed_w  # 例如：H_out = H_in - K + 1
-
+        
+        # Use fixed dimensions if provided, otherwise get dynamically
+        if fixed_hw is not None:
+            self.fixed_h = fixed_hw[0]
+            self.fixed_w = fixed_hw[1]
+            self.use_fixed_hw = True
+        else:
+            self.use_fixed_hw = False
+            
         self._epsilon = 1e-7
 
     def _normalize(self, x: torch.Tensor) -> torch.Tensor:
@@ -141,73 +158,80 @@ class AdaConv2D(nn.Module):
         pw_kernels: torch.Tensor, 
         biases: torch.Tensor
     ) -> torch.Tensor:
-        B = self.fixed_batch_size
+        # Get batch size from input or use fixed value
+        B = self.fixed_batch_size if self.fixed_batch_size is not None else x.size(0)
+        
+        # Normalize input
         x = self._normalize(x)
+        
+        # Get kernel size and calculate padding
         K = dw_kernels.shape[-1]
         padding = (K - 1) // 2
         
-        # 静态计算输出尺寸
-        H_out = self.fixed_h + 2 * padding - (K - 1)
-        W_out = self.fixed_w + 2 * padding - (K - 1)
+        # Get input dimensions (dynamic or static)
+        if self.use_fixed_hw:
+            H_in, W_in = self.fixed_h, self.fixed_w
+        else:
+            H_in, W_in = x.shape[2], x.shape[3]
         
-        # 准备输入和卷积核
+        # Calculate output dimensions (same as input with proper padding)
+        H_out = H_in
+        W_out = W_in
+        
+        # Prepare input and convolution kernels
         x_padded = F.pad(x, (padding, padding, padding, padding), mode="constant", value=0)
         x_merged = x_padded.reshape(1, B * self.in_channels, x_padded.shape[2], x_padded.shape[3])
         dw_kernels_merged = dw_kernels.reshape(B * self.out_channels, self.in_channels // self.groups, K, K)
         pw_kernels_merged = pw_kernels.reshape(B * self.out_channels, self.out_channels // self.groups, 1, 1)
         
-        # 执行深度可分离卷积
+        # Execute depthwise separable convolution
         output = self._depthwise_separable_conv2D(x_merged, dw_kernels_merged, pw_kernels_merged, biases, B, H_out, W_out)
         
         return output
 
-    def _depthwise_separable_conv2D(
-        self,
-        x: torch.Tensor,
-        dw_kernel: torch.Tensor,
-        pw_kernel: torch.Tensor,
-        bias: torch.Tensor,
-        B: int,
-        H_out: int,
-        W_out: int
-    ) -> torch.Tensor:
+    def _depthwise_separable_conv2D(self, x, dw_kernel, pw_kernel, bias, B, H_out, W_out):
+        # Calculate total groups for depthwise convolution
         conv_groups = B * self.groups
         
-        # 深度卷积
+        # Depthwise convolution
         depthwise_out = F.conv2d(x, dw_kernel, groups=conv_groups, padding=0)
         depthwise_out = depthwise_out.reshape(B, self.out_channels, H_out, W_out)
         
-        # 逐点卷积
+        # Pointwise convolution
         depthwise_merged = depthwise_out.reshape(1, B * self.out_channels, H_out, W_out)
         output = F.conv2d(depthwise_merged, pw_kernel, bias=bias, groups=conv_groups)
         output = output.reshape(B, self.out_channels, H_out, W_out)
         
         return output
 
-# ---------------- main 调试 ----------------
+# ---------------- Test Function ----------------
 def main():
-    # 固定 batch size、in/out 通道、组数以及图像尺寸
+    # Fixed parameters for testing
     B = 2
     C_in = 64
     C_out = 128
-    groups = 32  # 用户在 hyperparam.yaml 中指定的 groups
+    groups = 32
     H, W = 64, 64
     K = 3  # kernel size
 
-    # 创建 AdaConv2D 模块，传入固定 batch size 和固定组数
-    adaconv = AdaConv2D(in_channels=C_in, out_channels=C_out, groups=groups, fixed_batch_size=B, fixed_hw=(H, W))  # 新增：固定高度和宽度
+    # Create AdaConv2D module
+    adaconv = AdaConv2D(
+        in_channels=C_in, 
+        out_channels=C_out, 
+        groups=groups, 
+        fixed_batch_size=B, 
+        fixed_hw=(H, W)
+    )
     
-    # 构造测试输入 x
+    # Create test input
     x = torch.randn(B, C_in, H, W)
     
-    # 生成深度卷积核，注意：C_in // groups = 64 // 32 = 2
+    # Generate kernels and bias
     dw_kernels = torch.randn(B, C_out, C_in // groups, K, K)
-    # 生成点卷积核：形状 [B, C_out, C_out//groups, 1, 1] => 128 // 32 = 4
     pw_kernels = torch.randn(B, C_out, C_out // groups, 1, 1)
-    # 生成偏置：形状 [B * C_out]
     biases = torch.randn(B * C_out)
 
-    print("==== 开始 AdaConv2D 测试 ====")
+    print("==== Starting AdaConv2D test ====")
     output = adaconv(x, dw_kernels, pw_kernels, biases)
     print(f"Final output shape: {output.shape}")
 

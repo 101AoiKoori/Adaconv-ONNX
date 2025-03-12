@@ -2,6 +2,7 @@
 
 import argparse
 from pathlib import Path
+import math
 
 import torch
 import yaml
@@ -68,17 +69,20 @@ def main(config, model_ckpt, content_path, style_path, output_path):
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(config, "r", encoding="utf-8") as f:
+    with open(config, "r", encoding="utf8") as f:
         config_data = yaml.safe_load(f)
     config_data.update({"data_path": ""})
     config_data.update({"logdir": ""})
 
     hyper_param = Hyperparameter(**config_data)
+    fixed_batch_size = hyper_param.fixed_batch_size
 
     model = StyleTransfer(
         image_shape=tuple(hyper_param.image_shape),
         style_dim=hyper_param.style_dim,
         style_kernel=hyper_param.style_kernel,
+        groups=hyper_param.groups,
+        fixed_batch_size=fixed_batch_size,
     ).to(device)
 
     checkpoint = torch.load(model_ckpt, weights_only=True)
@@ -87,27 +91,57 @@ def main(config, model_ckpt, content_path, style_path, output_path):
     transforms = get_transform(resize=hyper_param.image_shape)
 
     grid_image = [torch.zeros((3, *hyper_param.image_shape), dtype=torch.float32).cpu()]
-    for content_img_path in content_img_paths:
-        content_img = transforms(read_image(content_img_path)).cpu()
-        grid_image.append(content_img)
 
-    for style_img_path in style_img_paths:
-        print(f"Style Image -> {style_img_path}")
-        style_img = torch.unsqueeze(transforms(read_image(style_img_path)).cpu(), dim=0)
-        grid_image.append(style_img[0])
-        for content_img_path in tqdm(content_img_paths):
-            content_img = torch.unsqueeze(
-                transforms(read_image(content_img_path)).cpu(), dim=0
-            )
-            style_content_img = model(
-                content=content_img.to(device),
-                style=style_img.to(device),
-            )
-            grid_image.append(style_content_img.detach().cpu()[0])
+    total_steps = (len(content_img_paths) // fixed_batch_size) * (len(style_img_paths) // fixed_batch_size)
+    progress_bar = tqdm(total=total_steps)
 
-    save_image(grid_image, output_path, nrow=len(content_img_paths) + 1)
+    for i in range(0, len(content_img_paths), fixed_batch_size):
+        content_batch_paths = content_img_paths[i:i + fixed_batch_size]
+        if len(content_batch_paths) < fixed_batch_size:
+            continue
+        content_batch = []
+        for content_img_path in content_batch_paths:
+            content_img = transforms(read_image(content_img_path)).cpu()
+            content_batch.append(content_img)
+            grid_image.append(content_img)
+        content_batch = torch.stack(content_batch, dim=0).to(device)
+
+        for j in range(0, len(style_img_paths), fixed_batch_size):
+            style_batch_paths = style_img_paths[j:j + fixed_batch_size]
+            if len(style_batch_paths) < fixed_batch_size:
+                continue
+            style_batch = []
+            for style_img_path in style_batch_paths:
+                style_img = transforms(read_image(style_img_path)).cpu()
+                # 确保风格图片维度为 [3, 256, 256]
+                if style_img.dim() == 4:
+                    style_img = style_img.squeeze(0)
+                style_batch.append(style_img)
+                grid_image.append(style_img)
+            style_batch = torch.stack(style_batch, dim=0).to(device)
+
+            assert content_batch.shape[0] == style_batch.shape[0], "Batch size mismatch"
+            style_content_batch = model(
+                content=content_batch,
+                style=style_batch,
+            )
+            for style_content_img in style_content_batch.detach().cpu():
+                # 确保推理结果维度为 [3, 256, 256]
+                if style_content_img.dim() == 4:
+                    style_content_img = style_content_img.squeeze(0)
+                grid_image.append(style_content_img)
+            progress_bar.update(1)
+
+    progress_bar.close()
+
+    # 计算合适的 nrow
+    total_images = len(grid_image)
+    nrow = int(math.ceil(math.sqrt(total_images)))
+
+    save_image(grid_image, output_path, nrow=nrow)
 
 
 if __name__ == "__main__":
     opt = parse_opt()
     main(**vars(opt))
+    
