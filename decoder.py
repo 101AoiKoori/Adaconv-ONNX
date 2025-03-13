@@ -1,6 +1,7 @@
 import torch
 from blocks import AdaConv2D, KernelPredictor
 from torch import nn
+import torch.nn.functional as F
 
 class DecoderBlock(nn.Module):
     def __init__(
@@ -11,11 +12,11 @@ class DecoderBlock(nn.Module):
         out_channels: int,
         groups: int,
         fixed_batch_size: int,
-        input_hw: tuple[int, int] = None,  # 修改为可选参数
-        output_hw: tuple[int, int] = None,  # 修改为可选参数
+        input_hw: tuple[int, int] = None,
+        output_hw: tuple[int, int] = None,
         convs: int = 1,
         final_block: bool = False,
-        scale_factor: int = 2,  # 添加缩放因子
+        scale_factor: int = 2,
     ) -> None:
         super().__init__()
         self.groups = groups
@@ -62,22 +63,69 @@ class DecoderBlock(nn.Module):
                 nn.ReLU() if not last_layer or not final_block else nn.Sigmoid()
             )
         
-        # 添加上采样层，支持两种模式
+        # 修改：使用更兼容的上采样方法
+        self.decoder_layers = nn.Sequential(*decoder_layers)
+        
+        # 将上采样从Sequential中分离出来
         if not final_block:
             if self.use_fixed_hw:
-                decoder_layers.append(nn.Upsample(size=output_hw, mode="nearest"))
+                # 使用确定的输出尺寸，通过卷积+插值替代直接使用nn.Upsample
+                self.upsample = self._create_fixed_upsample(output_hw)
             else:
-                decoder_layers.append(nn.Upsample(scale_factor=self.scale_factor, mode="nearest"))
-
-        self.decoder_layers = nn.Sequential(*decoder_layers)
+                # 使用比例因子，通过卷积+插值替代直接使用scale_factor参数
+                self.upsample = self._create_scaled_upsample(scale_factor)
+        else:
+            self.upsample = nn.Identity()
+    
+    def _create_fixed_upsample(self, output_hw):
+        """创建一个更兼容ONNX常量折叠的固定尺寸上采样层"""
+        class FixedUpsample(nn.Module):
+            def __init__(self, output_size):
+                super().__init__()
+                self.output_size = output_size
+            
+            def forward(self, x):
+                # 使用align_corners=False和mode='nearest'以提高ONNX兼容性
+                return F.interpolate(
+                    x, 
+                    size=self.output_size, 
+                    mode='nearest', 
+                    align_corners=None
+                )
+        
+        return FixedUpsample(output_hw)
+    
+    def _create_scaled_upsample(self, scale_factor):
+        """创建一个更兼容ONNX常量折叠的比例上采样层"""
+        class ScaledUpsample(nn.Module):
+            def __init__(self, factor):
+                super().__init__()
+                self.factor = factor
+            
+            def forward(self, x):
+                # 计算输出尺寸而非使用scale_factor
+                h, w = x.shape[2:]
+                new_h = h * self.factor
+                new_w = w * self.factor
+                # 使用明确的尺寸而非scale_factor来避免ONNX中的切片操作
+                return F.interpolate(
+                    x, 
+                    size=(new_h, new_w), 
+                    mode='nearest', 
+                    align_corners=None
+                )
+        
+        return ScaledUpsample(scale_factor)
 
     def forward(self, x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
         # 预测自适应卷积核(包括深度卷积核、点卷积核和偏置）
         dw_kernels, pw_kernels, biases = self.kernel_predictor(w)
         # 调用 AdaConv2D 执行自适应卷积
         x = self.ada_conv(x, dw_kernels, pw_kernels, biases)
-        # 执行后续普通卷积、激活和上采样
+        # 执行后续普通卷积和激活
         x = self.decoder_layers(x)
+        # 执行上采样（已从decoder_layers中分离）
+        x = self.upsample(x)
         return x
 
 class Decoder(nn.Module):

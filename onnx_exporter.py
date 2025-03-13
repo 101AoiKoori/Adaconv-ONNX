@@ -103,7 +103,7 @@ def load_checkpoint(model: torch.nn.Module, checkpoint_path: str, device: str):
             print(f"⚠️ Skipping non-matching parameter: {name}")
             continue
             
-        # Auto-reshape FC layer weights if needed
+        # Auto-view FC layer weights if needed
         if 'fc' in name and param.dim() == 2:
             param = param.view(*model.state_dict()[name].shape)
             

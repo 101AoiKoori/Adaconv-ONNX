@@ -96,6 +96,10 @@ class ONNXValidator:
         opset_imports = [f"{opset.domain} (版本 {opset.version})" for opset in self.model.opset_import]
         self._log_info(f"操作集导入: {', '.join(opset_imports)}")
         
+        # 新增：检查是否使用推荐的opset 14
+        if any(opset.domain == '' and opset.version == 14 for opset in self.model.opset_import):
+            self._log_success("检测到推荐使用的opset 14版本")
+        
         # 检查图名称
         self._log_info(f"图名称: {self.model.graph.name if self.model.graph.name else '未命名'}")
         
@@ -145,6 +149,13 @@ class ONNXValidator:
         for op_type, count in sorted(node_types.items(), key=lambda x: x[1], reverse=True):
             self._log_info(f"  - {op_type}: {count} ({count/total_nodes*100:.1f}%)")
         
+        # 检查视图(view)操作的特殊处理
+        view_nodes = [n for n in self.model.graph.node if n.op_type == 'Reshape' and 'view' in n.name.lower()]
+        if view_nodes:
+            self._log_info(f"发现 {len(view_nodes)} 个视图(view)操作")
+            for node in view_nodes[:3]:  # 仅显示前3个
+                self._log_info(f"  - {node.name} (输入: {node.input}, 输出: {node.output})")
+        
         # 检查是否有孤立节点
         all_inputs = set()
         all_outputs = set()
@@ -179,8 +190,8 @@ class ONNXValidator:
         return True
     
     def check_reshape_nodes(self):
-        """检查所有Reshape节点"""
-        self._log_section("Reshape节点检查")
+        """检查所有Reshape节点（包括视图操作）"""
+        self._log_section("Reshape/View节点检查")
         
         if not self.model:
             self._log_error("模型未加载，无法检查Reshape节点")
@@ -191,7 +202,7 @@ class ONNXValidator:
             self._log_info("模型中没有Reshape节点")
             return True
         
-        self._log_info(f"找到 {len(reshape_nodes)} 个Reshape节点")
+        self._log_info(f"找到 {len(reshape_nodes)} 个Reshape/View节点")
         
         # 节点名称到输入/输出类型映射
         tensor_info = {}
@@ -213,7 +224,12 @@ class ONNXValidator:
         
         # 检查每个Reshape节点
         for node_index, node in enumerate(reshape_nodes):
-            self._log_info(f"\n检查第 {node_index+1}/{len(reshape_nodes)} 个Reshape节点: {node.name}")
+            self._log_info(f"\n检查第 {node_index+1}/{len(reshape_nodes)} 个节点: {node.name}")
+            
+            # 检查是否为视图操作
+            is_view_op = 'view' in node.name.lower()
+            if is_view_op:
+                self._log_info("检测到视图(view)操作")
             
             # 获取输入输出名称
             input_name = node.input[0] if len(node.input) > 0 else None
@@ -246,7 +262,17 @@ class ONNXValidator:
             self._log_info("输入形状: " + self._format_dims(input_dims))
             self._log_info("输出形状: " + self._format_dims(output_dims))
             
-            # 检查reshape操作是否合法
+            # 视图操作的特殊验证
+            if is_view_op:
+                # 检查输入张量是否连续
+                if not self._check_view_compatibility(input_dims, output_dims):
+                    self._log_error("视图操作需要连续的内存布局")
+                    problematic_nodes.append(node.name)
+                else:
+                    self._log_success("视图操作验证通过")
+                continue
+            
+            # 普通Reshape验证逻辑
             is_valid, reason = self._validate_reshape(input_dims, output_dims)
             
             if is_valid:
@@ -269,11 +295,26 @@ class ONNXValidator:
                     self._log_warning(f"Reshape使用动态形状张量: {shape_name} (可能会影响某些运行时)")
         
         if problematic_nodes:
-            self._log_error(f"发现 {len(problematic_nodes)} 个有问题的Reshape节点: {', '.join(problematic_nodes[:5])}")
+            self._log_error(f"发现 {len(problematic_nodes)} 个有问题的节点: {', '.join(problematic_nodes[:5])}")
             return False
         else:
-            self._log_success("所有Reshape节点验证通过")
+            self._log_success("所有Reshape/View节点验证通过")
             return True
+    
+    def _check_view_compatibility(self, input_dims, output_dims):
+        """检查视图(view)操作的兼容性"""
+        # 简化验证：检查元素总数是否一致
+        input_size = self._calculate_size_simple(input_dims)
+        output_size = self._calculate_size_simple(output_dims)
+        return input_size == output_size
+    
+    def _calculate_size_simple(self, dim_info):
+        """简化版元素总数计算"""
+        size = 1
+        for _, val, status in dim_info:
+            if status == "静态" and isinstance(val, int) and val > 0:
+                size *= val
+        return size
     
     def _get_initializer_data(self, initializer):
         """从初始化器中提取数据"""

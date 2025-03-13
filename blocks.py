@@ -36,8 +36,8 @@ class GlobalStyleEncoder(nn.Module):
         x = torch.flatten(x, start_dim=1)
         w = self.fc(x)
         
-        # Reshape to final descriptor shape
-        w = w.reshape(
+        # view to final descriptor shape
+        w = w.view(
             batch_size,
             self.style_descriptor_shape[0],
             self.style_descriptor_shape[1],
@@ -96,7 +96,7 @@ class KernelPredictor(nn.Module):
         
         # Predict depthwise conv kernel: shape [B, C_out, C_in//groups, K, K]
         dw_kernel = self.depthwise_conv_kernel_predictor(w)
-        dw_kernel = dw_kernel.reshape(
+        dw_kernel = dw_kernel.view(
             B,
             self.out_channels,
             self.in_channels // self.groups,
@@ -106,7 +106,7 @@ class KernelPredictor(nn.Module):
         
         # Predict pointwise conv kernel: shape [B, C_out, C_out//groups, 1, 1]
         pw_kernel = self.pointwise_conv_kernel_predictor(w)
-        pw_kernel = pw_kernel.reshape(
+        pw_kernel = pw_kernel.view(
             B,
             self.out_channels,
             self.out_channels // self.groups,
@@ -116,7 +116,7 @@ class KernelPredictor(nn.Module):
         
         # Predict bias: shape [B, C_out], flattened to [B * C_out]
         bias = self.bias_predictor(w)
-        bias = bias.reshape(B, self.out_channels).reshape(-1)
+        bias = bias.view(B, self.out_channels).view(-1)
         
         return (dw_kernel, pw_kernel, bias)
 
@@ -180,9 +180,9 @@ class AdaConv2D(nn.Module):
         
         # Prepare input and convolution kernels
         x_padded = F.pad(x, (padding, padding, padding, padding), mode="constant", value=0)
-        x_merged = x_padded.reshape(1, B * self.in_channels, x_padded.shape[2], x_padded.shape[3])
-        dw_kernels_merged = dw_kernels.reshape(B * self.out_channels, self.in_channels // self.groups, K, K)
-        pw_kernels_merged = pw_kernels.reshape(B * self.out_channels, self.out_channels // self.groups, 1, 1)
+        x_merged = x_padded.view(1, B * self.in_channels, x_padded.shape[2], x_padded.shape[3])
+        dw_kernels_merged = dw_kernels.view(B * self.out_channels, self.in_channels // self.groups, K, K)
+        pw_kernels_merged = pw_kernels.view(B * self.out_channels, self.out_channels // self.groups, 1, 1)
         
         # Execute depthwise separable convolution
         output = self._depthwise_separable_conv2D(x_merged, dw_kernels_merged, pw_kernels_merged, biases, B, H_out, W_out)
@@ -195,45 +195,12 @@ class AdaConv2D(nn.Module):
         
         # Depthwise convolution
         depthwise_out = F.conv2d(x, dw_kernel, groups=conv_groups, padding=0)
-        depthwise_out = depthwise_out.reshape(B, self.out_channels, H_out, W_out)
+        depthwise_out = depthwise_out.view(B, self.out_channels, H_out, W_out)
         
         # Pointwise convolution
-        depthwise_merged = depthwise_out.reshape(1, B * self.out_channels, H_out, W_out)
+        depthwise_merged = depthwise_out.view(1, B * self.out_channels, H_out, W_out)
         output = F.conv2d(depthwise_merged, pw_kernel, bias=bias, groups=conv_groups)
-        output = output.reshape(B, self.out_channels, H_out, W_out)
+        output = output.view(B, self.out_channels, H_out, W_out)
         
         return output
-
-# ---------------- Test Function ----------------
-def main():
-    # Fixed parameters for testing
-    B = 2
-    C_in = 64
-    C_out = 128
-    groups = 32
-    H, W = 64, 64
-    K = 3  # kernel size
-
-    # Create AdaConv2D module
-    adaconv = AdaConv2D(
-        in_channels=C_in, 
-        out_channels=C_out, 
-        groups=groups, 
-        fixed_batch_size=B, 
-        fixed_hw=(H, W)
-    )
-    
-    # Create test input
-    x = torch.randn(B, C_in, H, W)
-    
-    # Generate kernels and bias
-    dw_kernels = torch.randn(B, C_out, C_in // groups, K, K)
-    pw_kernels = torch.randn(B, C_out, C_out // groups, 1, 1)
-    biases = torch.randn(B * C_out)
-
-    print("==== Starting AdaConv2D test ====")
-    output = adaconv(x, dw_kernels, pw_kernels, biases)
-    print(f"Final output shape: {output.shape}")
-
-if __name__ == '__main__':
-    main()
+#--------------------------------------
