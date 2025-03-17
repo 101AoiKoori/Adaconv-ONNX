@@ -5,6 +5,7 @@ import subprocess
 import platform
 import sys
 import os
+import re
 
 def get_system_info():
     """获取系统基本信息"""
@@ -64,11 +65,31 @@ def check_pytorch_cuda():
         # 版本信息
         print("\nCUDA版本:")
         print(f"  PyTorch内置CUDA版本: {torch.version.cuda}")
-        if hasattr(torch.cuda, 'get_driver_version'):
-            print(f"  当前驱动版本: {torch.cuda.get_driver_version()}")
+
+        if torch.cuda.is_available():
+            print("  检测到可用的 CUDA 设备。")
+            try:
+                device_count = torch.cuda.device_count()
+                print(f"  CUDA 设备数量: {device_count}")
+                for i in range(device_count):
+                    device_name = torch.cuda.get_device_name(i)
+                    print(f"  设备 {i} 名称: {device_name}")
+                try:
+                    result = subprocess.run(['nvidia-smi'], capture_output=True, text=True)
+                    output = result.stdout
+                    match = re.search(r'Driver Version: (\d+\.\d+)', output)
+                    if match:
+                        driver_version = match.group(1)
+                        print(f"  当前驱动版本: {driver_version}")
+                    else:
+                        print("  无法从 nvidia-smi 输出中提取驱动版本信息。")
+                except Exception as e:
+                    print(f"  运行 nvidia-smi 时出错: {e}")
+            except Exception as e:
+                print(f"  获取 CUDA 设备信息时出错: {e}")
         else:
-            print("  当前驱动版本: (通过PyTorch无法获取，请直接运行`nvidia-smi`查看)")
-                
+            print("  未检测到可用的 CUDA 设备。")
+                        
         # 执行计算测试
         print("\n执行计算测试...")
         try:

@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Iterator, Optional
-
+import zipfile
 import torch
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
@@ -32,20 +32,23 @@ def is_image_corrupt(image_path: str) -> bool:
 
 
 class ImageDataset(Dataset):
-    def __init__(self, image_dir, transform=None):
-        self.image_dir = image_dir
+    def __init__(self, zip_path, transform=None):
+        self.zip_path = zip_path
         self.transform = transform
         self.image_files = []
-        for img_path in Path(image_dir).glob("*.*"):
-            if img_path.suffix.lower() in (".png", ".jpg", ".jpeg"):
-                self.image_files.append(img_path)
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            for file in zip_ref.namelist():
+                if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    self.image_files.append(file)
 
     def __len__(self) -> int:
         return len(self.image_files)
 
     def __getitem__(self, idx: int) -> torch.Tensor:
         try:
-            image = Image.open(self.image_files[idx]).convert("RGB")
+            with zipfile.ZipFile(self.zip_path, 'r') as zip_ref:
+                with zip_ref.open(self.image_files[idx]) as img_file:
+                    image = Image.open(img_file).convert("RGB")
         except Exception:
             return self.__getitem__((idx + 1) % len(self.image_files))
 

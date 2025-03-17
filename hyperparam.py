@@ -1,6 +1,7 @@
 from pydantic import BaseModel, validator
 from typing import Optional, List, Tuple, Union, Any
 from pydantic.fields import Field
+import math
 
 class Hyperparameter(BaseModel):
     # Dataset params

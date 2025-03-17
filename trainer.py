@@ -30,7 +30,7 @@ class Trainer:
             image_shape = (self.hyper_param.image_size, self.hyper_param.image_size)
         else:
             image_shape = self.hyper_param.image_shape
-        
+
         # 处理 groups 参数
         groups = self.hyper_param.groups
         if groups is None and self.hyper_param.groups_list is not None:
@@ -42,11 +42,11 @@ class Trainer:
 
         if self.hyper_param.fixed_batch_size is None:
             self.hyper_param.fixed_batch_size = self.hyper_param.batch_size  # 使用训练批大小
-        
+
         # 保存这些计算出的参数，便于可视化
         self.image_shape = image_shape
         self.groups = groups
-            
+
         self.model = StyleTransfer(
             image_shape=image_shape,
             style_dim=self.hyper_param.style_dim,
@@ -70,9 +70,11 @@ class Trainer:
 
         self.step = 0
 
+        # 加载内容训练数据
+        content_train_zip = list(Path(self.hyper_param.data_path).glob("content/train*.zip"))[0]
         self.content_train_dataloader = InfiniteDataLoader(
             ImageDataset(
-                list(Path(self.hyper_param.data_path).glob("content/train*"))[0],
+                content_train_zip,
                 transform=get_transform(
                     resize=self.hyper_param.resize_size,
                     crop_size=self.hyper_param.image_shape[-1],
@@ -83,9 +85,11 @@ class Trainer:
             num_workers=4,
         ).__iter__()
 
+        # 加载风格训练数据
+        style_train_zip = list(Path(self.hyper_param.data_path).glob("style/train*.zip"))[0]
         self.style_train_dataloader = InfiniteDataLoader(
             ImageDataset(
-                list(Path(self.hyper_param.data_path).glob("style/train*"))[0],
+                style_train_zip,
                 transform=get_transform(
                     resize=self.hyper_param.resize_size,
                     crop_size=self.hyper_param.image_shape[-1],
@@ -96,32 +100,36 @@ class Trainer:
             num_workers=4,
         ).__iter__()
 
+        # 加载内容测试数据
+        content_test_zip = list(Path(self.hyper_param.data_path).glob("content/test*.zip"))[0]
         self.content_test_dataloader = InfiniteDataLoader(
             ImageDataset(
-                list(Path(self.hyper_param.data_path).glob("content/test*"))[0],
+                content_test_zip,
                 transform=get_transform(
                     resize=self.hyper_param.resize_size,
                     crop_size=self.hyper_param.image_shape[-1],
                 ),
             ),
             batch_size=self.hyper_param.batch_size,
-            shuffle=True,
+            shuffle=False,
             num_workers=4,
         ).__iter__()
 
+        # 加载风格测试数据
+        style_test_zip = list(Path(self.hyper_param.data_path).glob("style/test*.zip"))[0]
         self.style_test_dataloader = InfiniteDataLoader(
             ImageDataset(
-                list(Path(self.hyper_param.data_path).glob("style/test*"))[0],
+                style_test_zip,
                 transform=get_transform(
                     resize=self.hyper_param.resize_size,
                     crop_size=self.hyper_param.image_shape[-1],
                 ),
             ),
             batch_size=self.hyper_param.batch_size,
-            shuffle=True,
+            shuffle=False,
             num_workers=4,
         ).__iter__()
-        
+
         # 统计模型参数数量
         self.model_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
 

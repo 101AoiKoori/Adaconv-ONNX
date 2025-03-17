@@ -12,11 +12,11 @@ class DecoderBlock(nn.Module):
         out_channels: int,
         groups: int,
         fixed_batch_size: int,
-        input_hw: tuple[int, int] = None,
-        output_hw: tuple[int, int] = None,
-        convs: int = 1,
-        final_block: bool = False,
-        scale_factor: int = 2,
+        input_hw: tuple[int, int] = None, 
+        output_hw: tuple[int, int] = None, 
+        convs: int = 2, # 添加卷积层数参数
+        final_block: bool = False, # 添加标志以确定是否为最终块
+        scale_factor: int = 2, # 添加比例因子参数
     ) -> None:
         super().__init__()
         self.groups = groups
@@ -103,14 +103,10 @@ class DecoderBlock(nn.Module):
                 self.factor = factor
             
             def forward(self, x):
-                # 计算输出尺寸而非使用scale_factor
-                h, w = x.shape[2:]
-                new_h = h * self.factor
-                new_w = w * self.factor
-                # 使用明确的尺寸而非scale_factor来避免ONNX中的切片操作
+                # 直接使用 scale_factor 进行插值
                 return F.interpolate(
                     x, 
-                    size=(new_h, new_w), 
+                    scale_factor=self.factor, 
                     mode='nearest', 
                     align_corners=None
                 )
@@ -155,8 +151,12 @@ class Decoder(nn.Module):
             # 单个值，应用于所有层
             self.groups_list = [groups] * len(self.input_channels)
         else:
-            # 默认按通道数设置分组
-            self.groups_list = [c // 1, c // 2, c // 4, c // 8] 
+            # 默认按输入通道数设置分组
+            self.groups_list = []
+            for c in self.input_channels:
+                self.groups_list.extend([c // 1, c // 2, c // 4, c // 8][:1])  # 每个通道只取一个分组值
+            
+            # 确保每个分组至少为1
             for i, g in enumerate(self.groups_list):
                 if g < 1:
                     self.groups_list[i] = 1
