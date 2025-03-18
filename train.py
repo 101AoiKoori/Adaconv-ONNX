@@ -1,5 +1,4 @@
 import argparse
-
 import yaml
 from hyperparam import Hyperparameter
 from trainer import Trainer

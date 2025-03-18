@@ -9,8 +9,8 @@ class Hyperparameter(BaseModel):
     logdir: str = "runs"
 
     # Model params
-    image_size: int = 512  # 修改为 512
-    image_shape: Tuple[int, int] = (512, 512)  # 修改为 (512, 512)
+    image_size: int = 256  
+    image_shape: Tuple[int, int] = (256, 256)  
     style_dim: int = 512
     style_kernel: int = 3
     
@@ -24,7 +24,7 @@ class Hyperparameter(BaseModel):
     learning_rate: float = 0.0001
     batch_size: int = 8
     fixed_batch_size: Optional[int] = 8
-    resize_size: int = 1024  # 修改为 1024
+    resize_size: int = 512 
     
     # Export params
     use_fixed_size: bool = False  # For static computational graph
@@ -42,7 +42,7 @@ class Hyperparameter(BaseModel):
         """Ensure image_shape is a tuple of two integers"""
         if not isinstance(v, tuple) or len(v) != 2:
             # If not a proper tuple, try to convert from image_size
-            image_size = values.get('image_size', 512)  # 修改为 512
+            image_size = values.get('image_size', 256)
             return (image_size, image_size)
         return v
     
