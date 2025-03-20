@@ -24,6 +24,7 @@ class StyleTransfer(nn.Module):
         self.groups = groups
         self.fixed_batch_size = fixed_batch_size
         self.use_fixed_size = use_fixed_size
+        self.freeze_normalization = False
 
         self.encoder = Encoder()
         self.encoder.freeze()
@@ -62,7 +63,18 @@ class StyleTransfer(nn.Module):
 
         self.apply(init_weights)
 
+    def freeze_normalization_layers(self):
+        """显式冻结所有归一化层"""
+        for m in self.modules():
+            if isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d)):
+                m.eval()  # 冻结统计量计算
+                m.weight.requires_grad_(False)
+                m.bias.requires_grad_(False)
+        self.freeze_normalization = True
+
     def forward(self, content: torch.Tensor, style: torch.Tensor) -> torch.Tensor:
+        if not self.training and not self.freeze_normalization:
+            self.freeze_normalization_layers()
         """
         仅返回最终生成的 x，适合 ONNX 导出时使用静态计算图。
         """

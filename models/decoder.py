@@ -14,7 +14,7 @@ class DecoderBlock(nn.Module):
         fixed_batch_size: int,
         input_hw: tuple[int, int] = None, 
         output_hw: tuple[int, int] = None, 
-        convs: int = 2, # 添加卷积层数参数
+        convs: int = 1, # 添加卷积层数参数
         final_block: bool = False, # 添加标志以确定是否为最终块
         scale_factor: int = 2, # 添加比例因子参数
     ) -> None:
@@ -89,7 +89,7 @@ class DecoderBlock(nn.Module):
                 return F.interpolate(
                     x, 
                     size=self.output_size, 
-                    mode='nearest', 
+                    mode='bilinear', 
                     align_corners=None
                 )
         
@@ -107,7 +107,7 @@ class DecoderBlock(nn.Module):
                 return F.interpolate(
                     x, 
                     scale_factor=self.factor, 
-                    mode='nearest', 
+                    mode='bilinear', 
                     align_corners=None
                 )
         
