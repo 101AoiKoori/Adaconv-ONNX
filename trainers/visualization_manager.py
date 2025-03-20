@@ -276,7 +276,7 @@ class VisualizationManager:
                                       torch.cuda.max_memory_allocated() / (1024**3),
                                       step)
                                       
-    def log_performance_metrics(self, batch_time, examples_per_sec, progress, step):
+    def log_performance_metrics(self, current_batch_time, current_examples_per_sec,batch_time, examples_per_sec, progress, step):
         """
         Log performance metrics
         
@@ -286,6 +286,8 @@ class VisualizationManager:
             progress: Training progress as percentage
             step: Current training step
         """
+        self.writer.add_scalar('Performance/Current_Batch_Time', current_batch_time, step)
+        self.writer.add_scalar('Performance/Current_Examples_Per_Second', current_examples_per_sec, step)
         self.writer.add_scalar('Performance/Batch_Time_Seconds', batch_time, step)
         self.writer.add_scalar('Performance/Examples_Per_Second', examples_per_sec, step)
         self.writer.add_scalar('Performance/Progress_Percent', progress * 100, step)

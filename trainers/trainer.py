@@ -12,6 +12,9 @@ from hyperparam.hyperparam import Hyperparameter
 from skimage.metrics import structural_similarity as ssim
 from skimage.metrics import peak_signal_noise_ratio as psnr
 
+ckpt_history = []  # 新增：用于记录历史检查点路径
+max_history = 3    # 保留最近3个历史检查点
+
 class Trainer:
     """Main trainer class for style transfer model"""
     
@@ -72,7 +75,10 @@ class Trainer:
                 contents=train_contents, styles=train_styles, return_features=True
             )
             loss.backward()
-            
+
+            duration_seconds = (datetime.datetime.now() - start_time).total_seconds()
+            batch_times.append(duration_seconds)  # 原有代码
+
             # 记录梯度可视化
             if self.model_manager.step % self.hyper_param.log_step == 0:
                 grad_fig = self.vis_manager.visualize_gradients(self.model_manager.named_parameters())
@@ -99,16 +105,33 @@ class Trainer:
                 # 计算性能指标
                 avg_batch_time = sum(batch_times) / len(batch_times) if batch_times else 0
                 examples_per_sec = self.hyper_param.batch_size / avg_batch_time if avg_batch_time > 0 else 0
-                self.vis_manager.log_performance_metrics(avg_batch_time, examples_per_sec, 
-                                                       self.model_manager.step / self.hyper_param.num_iteration,
-                                                       self.model_manager.step)
+                current_examples_per_sec = self.hyper_param.batch_size / duration_seconds
+                self.vis_manager.log_performance_metrics(
+                    current_batch_time=duration_seconds,
+                    current_examples_per_sec=current_examples_per_sec,
+                    batch_time=avg_batch_time if 'avg_batch_time' in locals() else 0,
+                    examples_per_sec=examples_per_sec if 'examples_per_sec' in locals() else 0,
+                    progress=self.model_manager.step / self.hyper_param.num_iteration,
+                    step=self.model_manager.step
+                )
                 batch_times = batch_times[-100:]
 
             # 保存检查点
             if self.model_manager.step % self.hyper_param.save_step == 0:
+                # 生成当前检查点路径
                 current_ckpt = ckpt_dir / f"model_step_{str(self.model_manager.step).zfill(_zfill)}.pt"
+                
+                # 保存当前检查点
                 self.model_manager.save_checkpoint(current_ckpt)
                 self.model_manager.save_checkpoint(last_ckpt)
+                
+                # 维护历史检查点列表
+                ckpt_history.append(current_ckpt)
+                
+                # 删除超出数量的最旧检查点
+                if len(ckpt_history) > max_history:
+                    old_ckpt = ckpt_history.pop(0)
+                    old_ckpt.unlink(missing_ok=True)
 
             # 打印日志
             if self.model_manager.step % self.hyper_param.log_step == 0:

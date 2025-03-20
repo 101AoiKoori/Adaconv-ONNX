@@ -182,7 +182,7 @@ class ModelManager:
         Returns:
             iterator: Named parameters
         """
-        return self.model.named_parameters()
+        return [(name, param) for name, param in self.model.named_parameters() if param.requires_grad]
         
     def set_train(self, mode=True):
         """
