@@ -3,7 +3,7 @@ image_size: 512
 image_shape: [512, 512]
 style_dim: 512
 style_kernel: 3
-style_weight: 160.0
+style_weight: 100.0
 
 # Groups configuration - choose one approach:
 groups_ratios: [1.0, 0.5, 0.25, 0.125]
@@ -13,7 +13,7 @@ groups_list: null
 # Training parameters
 batch_size: 2
 learning_rate: 0.0001
-num_iteration: 320000
+num_iteration: 160000
 
 # Export configuration
 fixed_batch_size: 2     # For static computational graph 训练时需要与batch_size一致
@@ -22,7 +22,7 @@ dynamic_mode: false
 
 # Logging parameters
 log_step: 10
-save_step: 500
-summary_step: 10
+save_step: 200
+summary_step: 100
 max_ckpts: 3
 resize_size: 1024

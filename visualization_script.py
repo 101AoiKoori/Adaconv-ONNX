@@ -1,9 +1,9 @@
 import os
 import torch
-from model import StyleTransfer
+from models.model import StyleTransfer
 from PIL import Image
 import matplotlib.pyplot as plt
-from visualization import create_style_transfer_grid, load_image, tensor_to_image
+from utils.visualization import create_style_transfer_grid, load_image, tensor_to_image
 
 def demo():
     """
@@ -13,7 +13,7 @@ def demo():
     model_path = "./logs/ckpts/last.pt"  # Replace with your model path
     content_dir = "./Test/content"  # Replace with your content images directory
     style_dir = "./Test/style"      # Replace with your style images directory
-    output_path = "adaconv_style.png"
+    output_path = "./adaconv_style.png"
     style_dim = 512
     style_kernel = 3
 
@@ -69,7 +69,6 @@ def demo():
         content_images, 
         style_images, 
         device,
-        title="AdaConv Style Transfer Results",
         output_path=output_path,
         image_size=image_size
     )
