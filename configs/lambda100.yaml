@@ -11,12 +11,12 @@ groups: null
 groups_list: null
 
 # Training parameters
-batch_size: 2
+batch_size: 8
 learning_rate: 0.0001
-num_iteration: 160000
+num_iteration: 320000
 
 # Export configuration
-fixed_batch_size: 2     # For static computational graph 训练时需要与batch_size一致
+fixed_batch_size: 8     # For static computational graph 训练时需要与batch_size一致
 use_fixed_size: false
 dynamic_mode: false
 
