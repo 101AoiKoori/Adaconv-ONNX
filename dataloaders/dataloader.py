@@ -105,4 +105,21 @@ class InfiniteDataLoader(DataLoader):
             try:
                 yield next(iterator)
             except StopIteration:
+<<<<<<< HEAD
                 iterator = super().__iter__()    
+=======
+                iterator = super().__iter__()
+
+
+if __name__ == "__main__":
+    zip_path = "your_zip_file.zip"
+    transform = get_transform(resize=256, crop_size=224)
+    dataset = ImageDataset(zip_path, transform)
+    dataloader = InfiniteDataLoader(dataset, batch_size=4, shuffle=True)
+
+    for i, batch in enumerate(dataloader):
+        print(f"Batch {i}: {batch.shape}")
+        if i == 5:
+            break
+    
+>>>>>>> ee974d8144d465a5eb06df83e74328d5355ea7ab
