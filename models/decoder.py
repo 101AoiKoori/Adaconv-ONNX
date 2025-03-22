@@ -56,7 +56,7 @@ class DecoderBlock(nn.Module):
                     out_channels=_out_channels,
                     kernel_size=3,
                     padding=1,
-                    padding_mode="zeros",
+                    padding_mode="reflect",
                 )
             )
             decoder_layers.append(
@@ -90,7 +90,7 @@ class DecoderBlock(nn.Module):
                     x, 
                     size=self.output_size, 
                     mode='bilinear', 
-                    align_corners=None
+                    align_corners=False
                 )
         
         return FixedUpsample(output_hw)

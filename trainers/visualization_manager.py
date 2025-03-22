@@ -6,7 +6,8 @@ from matplotlib.figure import Figure
 from PIL import Image
 import io
 import datetime
-from pathlib import Path
+import traceback
+import torch.nn.functional as F
 import json
 from skimage.metrics import structural_similarity as ssim
 from skimage.metrics import peak_signal_noise_ratio as psnr
@@ -304,63 +305,58 @@ class VisualizationManager:
         self.writer.add_scalar('Training/ETA_Minutes', eta_seconds / 60, step)
         self.writer.add_text('Training/ETA', f"Estimated time remaining: {eta_str}", step)
 
-    def calculate_ssim_psnr(self, real_images, fake_images, step):
+    def calculate_ssim_psnr(self, style_images, fake_images, step):
         """
-        Calculate SSIM and PSNR metrics and log them to TensorBoard
+        计算生成图像与风格图像之间的SSIM和PSNR
         
         Args:
-            real_images: Real image tensors
-            fake_images: Generated image tensors
-            step: Current training step
+            style_images: 风格图像张量（原real_images参数重命名）
+            fake_images: 生成图像张量
+            step: 当前训练步数
         """
-        # 忽略 TypedStorage 警告
-        
-
         try:
-            # Calculate SSIM and PSNR
             ssim_values = []
             psnr_values = []
             
-            # Ensure images are on CPU and clamped to [0, 1] range
-            real_np = real_images.detach().cpu().clamp(0, 1)
+            # 确保数据在CPU且范围正确（风格图与生成图需对齐）
+            style_np = style_images.detach().cpu().clamp(0, 1)
             fake_np = fake_images.detach().cpu().clamp(0, 1)
             
-            # Iterate through each image in the batch
-            for i in range(real_np.size(0)):
+            # 确保风格图与生成图尺寸一致（必要时插值）
+            if style_np.shape[-2:] != fake_np.shape[-2:]:
+                style_np = F.interpolate(style_np, size=fake_np.shape[-2:], mode='bilinear', align_corners=False)
+            
+            for i in range(style_np.size(0)):
                 try:
-                    # Get individual images and convert to (H, W, C) format
-                    real_img = real_np[i].permute(1, 2, 0).numpy()
+                    # 提取风格图和生成图
+                    style_img = style_np[i].permute(1, 2, 0).numpy()
                     fake_img = fake_np[i].permute(1, 2, 0).numpy()
                     
-                    # Calculate SSIM (Structural Similarity)
-                    # Use channel_axis=2 instead of multichannel=True
-                    ssim_value = ssim(real_img, fake_img, channel_axis=2, data_range=1.0)
-                    ssim_values.append(ssim_value)
+                    # 计算指标
+                    ssim_value = ssim(style_img, fake_img, channel_axis=2, data_range=1.0)
+                    psnr_value = psnr(style_img, fake_img, data_range=1.0)
                     
-                    # Calculate PSNR (Peak Signal-to-Noise Ratio)
-                    psnr_value = psnr(real_img, fake_img, data_range=1.0)
+                    ssim_values.append(ssim_value)
                     psnr_values.append(psnr_value)
                     
                 except Exception as e:
-                    print(f"Warning: Error calculating metrics for image {i}: {str(e)}")
-                    # Continue with next image instead of failing the entire batch
+                    print(f"图像 {i} 指标计算失败: {str(e)}")
                     continue
             
-            # Calculate averages if we have any valid values
+            # 记录结果
             if ssim_values:
                 avg_ssim = np.mean(ssim_values)
-                self.writer.add_scalar('Metrics/SSIM', avg_ssim, step)
-                print(f"Average SSIM: {avg_ssim:.4f}")
+                self.writer.add_scalar('Metrics/SSIM_vs_Style', avg_ssim, step)  # 修改指标名称
+                print(f"SSIM（与风格图对比）: {avg_ssim:.4f}")
             
             if psnr_values:
                 avg_psnr = np.mean(psnr_values)
-                self.writer.add_scalar('Metrics/PSNR', avg_psnr, step)
-                print(f"Average PSNR: {avg_psnr:.4f}")
-            
+                self.writer.add_scalar('Metrics/PSNR_vs_Style', avg_psnr, step)
+                print(f"PSNR（与风格图对比）: {avg_psnr:.4f}")
+        
         except Exception as e:
-            print(f"Warning: Error calculating image quality metrics: {str(e)}")
-            import traceback
-            traceback.print_exc()  # Print full traceback for debugging
+            print(f"指标计算异常: {str(e)}")
+            traceback.print_exc()
 
     def write_training_metrics_and_images(self, train_loss, train_style_loss, train_content_loss, train_contents, train_styles, train_styled_content, step):
         """

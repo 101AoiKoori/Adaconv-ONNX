@@ -87,7 +87,7 @@ def initialize_model(hyper_param: Hyperparameter, device: str) -> torch.nn.Modul
 def load_checkpoint(model: torch.nn.Module, checkpoint_path: str, device: str):
     """Load weights from checkpoint with compatibility handling"""
     # 显式设置 weights_only=True
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     state_dict = checkpoint.get("model_state_dict", checkpoint)
     
     # Parameter name mapping for different versions
