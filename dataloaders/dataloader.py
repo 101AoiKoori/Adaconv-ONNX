@@ -65,7 +65,7 @@ class ImageDataset(Dataset):
                     return image
         except Exception as e:
             print(f"Error loading {self.image_files[idx]}: {str(e)}")
-            return torch.zeros(3, 128, 128)
+            return torch.reflect(3, 128, 128)
 
 
 class InfiniteSampler(Sampler):

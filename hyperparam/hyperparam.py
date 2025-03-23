@@ -28,7 +28,6 @@ class Hyperparameter(BaseModel):
     
     # Export params
     use_fixed_size: bool = False  # For static computational graph
-    dynamic_mode: bool = False    # For dynamic ONNX export
     
     # Training iteration params
     num_iteration: int = 160000
