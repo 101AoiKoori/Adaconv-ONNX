@@ -14,13 +14,13 @@ class GlobalStyleEncoder(nn.Module):
         channels = style_feat_shape[0]
 
         self.style_encoder = nn.Sequential(
-            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="reflect"),
+            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="zeros"),
             nn.AvgPool2d(2, 2),
             nn.LeakyReLU(),
-            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="reflect"),
+            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="zeros"),
             nn.AvgPool2d(2, 2),
             nn.LeakyReLU(),
-            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="reflect"),
+            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="zeros"),
             nn.AvgPool2d(2, 2),
             nn.LeakyReLU(),
         )
@@ -36,8 +36,8 @@ class GlobalStyleEncoder(nn.Module):
         x = torch.flatten(x, start_dim=1)
         w = self.fc(x)
         
-        # view to final descriptor shape
-        w = w.view(
+        # reshape to final descriptor shape
+        w = w.reshape(
             batch_size,
             self.style_descriptor_shape[0],
             self.style_descriptor_shape[1],
@@ -69,7 +69,7 @@ class KernelPredictor(nn.Module):
             out_channels=self.out_channels * (self.in_channels // self.groups),
             kernel_size=3,
             padding=1,
-            padding_mode="reflect"
+            padding_mode="zeros"
         )
 
         self.pointwise_conv_kernel_predictor = nn.Sequential(
@@ -96,7 +96,7 @@ class KernelPredictor(nn.Module):
         
         # Predict depthwise conv kernel: shape [B, C_out, C_in//groups, K, K]
         dw_kernel = self.depthwise_conv_kernel_predictor(w)
-        dw_kernel = dw_kernel.view(
+        dw_kernel = dw_kernel.reshape(
             B,
             self.out_channels,
             self.in_channels // self.groups,
@@ -106,7 +106,7 @@ class KernelPredictor(nn.Module):
         
         # Predict pointwise conv kernel: shape [B, C_out, C_out//groups, 1, 1]
         pw_kernel = self.pointwise_conv_kernel_predictor(w)
-        pw_kernel = pw_kernel.view(
+        pw_kernel = pw_kernel.reshape(
             B,
             self.out_channels,
             self.out_channels // self.groups,
@@ -116,7 +116,7 @@ class KernelPredictor(nn.Module):
         
         # Predict bias: shape [B, C_out], flattened to [B * C_out]
         bias = self.bias_predictor(w)
-        bias = bias.view(B, self.out_channels).view(-1)
+        bias = bias.reshape(B, self.out_channels).reshape(-1)
         
         return (dw_kernel, pw_kernel, bias)
 
@@ -179,10 +179,10 @@ class AdaConv2D(nn.Module):
         W_out = W_in
         
         # Prepare input and convolution kernels
-        x_padded = F.pad(x, (padding, padding, padding, padding), mode="reflect", value=0)
-        x_merged = x_padded.view(1, B * self.in_channels, x_padded.shape[2], x_padded.shape[3])
-        dw_kernels_merged = dw_kernels.view(B * self.out_channels, self.in_channels // self.groups, K, K)
-        pw_kernels_merged = pw_kernels.view(B * self.out_channels, self.out_channels // self.groups, 1, 1)
+        x_padded = F.pad(x, (padding, padding, padding, padding), mode="constant", value=0)
+        x_merged = x_padded.reshape(1, B * self.in_channels, x_padded.shape[2], x_padded.shape[3])
+        dw_kernels_merged = dw_kernels.reshape(B * self.out_channels, self.in_channels // self.groups, K, K)
+        pw_kernels_merged = pw_kernels.reshape(B * self.out_channels, self.out_channels // self.groups, 1, 1)
         
         # Execute depthwise separable convolution
         output = self._depthwise_separable_conv2D(x_merged, dw_kernels_merged, pw_kernels_merged, biases, B, H_out, W_out)
@@ -195,12 +195,12 @@ class AdaConv2D(nn.Module):
         
         # Depthwise convolution
         depthwise_out = F.conv2d(x, dw_kernel, groups=conv_groups, padding=0)
-        depthwise_out = depthwise_out.view(B, self.out_channels, H_out, W_out)
+        depthwise_out = depthwise_out.reshape(B, self.out_channels, H_out, W_out)
         
         # Pointwise convolution
-        depthwise_merged = depthwise_out.view(1, B * self.out_channels, H_out, W_out)
+        depthwise_merged = depthwise_out.reshape(1, B * self.out_channels, H_out, W_out)
         output = F.conv2d(depthwise_merged, pw_kernel, bias=bias, groups=conv_groups)
-        output = output.view(B, self.out_channels, H_out, W_out)
+        output = output.reshape(B, self.out_channels, H_out, W_out)
         
         return output
 #--------------------------------------

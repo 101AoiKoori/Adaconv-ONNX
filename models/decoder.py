@@ -56,7 +56,7 @@ class DecoderBlock(nn.Module):
                     out_channels=_out_channels,
                     kernel_size=3,
                     padding=1,
-                    padding_mode="reflect",
+                    padding_mode="zeros",
                 )
             )
             decoder_layers.append(
