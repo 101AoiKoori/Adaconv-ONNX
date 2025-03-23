@@ -180,15 +180,9 @@ class AdaConv2D(nn.Module):
         
         # Prepare input and convolution kernels
         x_padded = F.pad(x, (padding, padding, padding, padding), mode="constant", value=0)
-<<<<<<< HEAD
         x_merged = x_padded.view(1, B * self.in_channels, x_padded.shape[2], x_padded.shape[3])
         dw_kernels_merged = dw_kernels.view(B * self.out_channels, self.in_channels // self.groups, K, K)
         pw_kernels_merged = pw_kernels.view(B * self.out_channels, self.out_channels // self.groups, 1, 1)
-=======
-        x_merged = x_padded.reshape(1, B * self.in_channels, x_padded.shape[2], x_padded.shape[3])
-        dw_kernels_merged = dw_kernels.reshape(B * self.out_channels, self.in_channels // self.groups, K, K)
-        pw_kernels_merged = pw_kernels.reshape(B * self.out_channels, self.out_channels // self.groups, 1, 1)
->>>>>>> ac02d931c10ce9e71e3f9b4494c77a563b7846c1
         
         # Execute depthwise separable convolution
         output = self._depthwise_separable_conv2D(x_merged, dw_kernels_merged, pw_kernels_merged, biases, B, H_out, W_out)
