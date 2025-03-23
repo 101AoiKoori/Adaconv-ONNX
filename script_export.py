@@ -1,5 +1,5 @@
 import argparse
-from utils_onnx.onnx_exporter import main
+from utils.onnx_exporter import main
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Export model to ONNX with preset paths")

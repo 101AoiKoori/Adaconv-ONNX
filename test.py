@@ -3,7 +3,7 @@ import torch
 from models.model import StyleTransfer
 from PIL import Image
 import matplotlib.pyplot as plt
-from utils.visualization import create_style_transfer_grid, load_image, tensor_to_image
+from utils.checkepoint import create_style_transfer_grid, load_image, tensor_to_image
 
 def demo():
     """
