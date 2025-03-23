@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 import torch
 from dataloaders.dataloader import ImageDataset, InfiniteDataLoader, get_transform

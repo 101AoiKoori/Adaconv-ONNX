@@ -14,13 +14,13 @@ class GlobalStyleEncoder(nn.Module):
         channels = style_feat_shape[0]
 
         self.style_encoder = nn.Sequential(
-            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="reflect"),
+            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="zeros"),
             nn.AvgPool2d(2, 2),
             nn.LeakyReLU(),
-            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="reflect"),
+            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="zeros"),
             nn.AvgPool2d(2, 2),
             nn.LeakyReLU(),
-            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="reflect"),
+            nn.Conv2d(channels, channels, kernel_size=(3,3), padding=(1,1), padding_mode="zeros"),
             nn.AvgPool2d(2, 2),
             nn.LeakyReLU(),
         )
@@ -69,7 +69,7 @@ class KernelPredictor(nn.Module):
             out_channels=self.out_channels * (self.in_channels // self.groups),
             kernel_size=3,
             padding=1,
-            padding_mode="reflect"
+            padding_mode="zeros"
         )
 
         self.pointwise_conv_kernel_predictor = nn.Sequential(
@@ -179,7 +179,7 @@ class AdaConv2D(nn.Module):
         W_out = W_in
         
         # Prepare input and convolution kernels
-        x_padded = F.pad(x, (padding, padding, padding, padding), mode="reflect", value=0)
+        x_padded = F.pad(x, (padding, padding, padding, padding), mode="constant", value=0)
         x_merged = x_padded.view(1, B * self.in_channels, x_padded.shape[2], x_padded.shape[3])
         dw_kernels_merged = dw_kernels.view(B * self.out_channels, self.in_channels // self.groups, K, K)
         pw_kernels_merged = pw_kernels.view(B * self.out_channels, self.out_channels // self.groups, 1, 1)
