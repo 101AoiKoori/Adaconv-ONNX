@@ -75,9 +75,11 @@ class ModelManager:
         
     def setup_optimizer(self):
         """Initialize optimizer and scheduler"""
+        # 支持从命令行传入的学习率参数覆盖配置文件
         self.optimizer = Adam(
             self.model.parameters(), lr=self.hyper_param.learning_rate
         )
+        # 确保总步数正确
         self.scheduler = OneCycleLR(
             self.optimizer,
             max_lr=self.hyper_param.learning_rate,
@@ -100,6 +102,8 @@ class ModelManager:
             "Fixed Batch Size": self.hyper_param.fixed_batch_size,
             "Use Fixed Size": self.hyper_param.use_fixed_size,
             "Total Parameters": f"{self.model_params:,}",
+            "Learning Rate": self.hyper_param.learning_rate,
+            "Training Steps": self.hyper_param.num_iteration
         }
     
     def save_checkpoint(self, ckpt_path):
@@ -115,6 +119,8 @@ class ModelManager:
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "scheduler_state_dict": self.scheduler.state_dict(),
+                "learning_rate": self.hyper_param.learning_rate,
+                "num_iteration": self.hyper_param.num_iteration
             },
             ckpt_path,
         )
@@ -132,7 +138,18 @@ class ModelManager:
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         self.step = checkpoint["steps"]
-        print(f"Loaded checkpoint from {ckpt_path}")
+        print(f"Loaded checkpoint from {ckpt_path} (step {self.step})")
+        
+    def load_model_only(self, ckpt_path):
+        """
+        只加载模型权重，不加载优化器状态（用于微调）
+        
+        Args:
+            ckpt_path: 检查点路径
+        """
+        checkpoint = torch.load(ckpt_path, weights_only=False)
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        print(f"Loaded model weights only from {ckpt_path} for fine-tuning")
         
     def forward(self, contents, styles, return_features=False):
         """
