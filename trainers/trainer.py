@@ -27,7 +27,7 @@ class Trainer:
             "target_steps": self.hyper_param.num_iteration,
             "fine_tuning": False,
             "history": [],
-            "max_history": 3  # 保留最近3个历史检查点
+            "max_history": self.hyper_param.max_ckpts if hasattr(self.hyper_param, 'max_ckpts') else 3
         }
         print(f"Training Initialized -> device: {self.device}")
 
@@ -74,6 +74,10 @@ class Trainer:
                 return
             else:
                 print(f"No previous training state found, starting new training instead of fine-tuning")
+                self.training_state["fine_tuning"] = True
+                self.training_state["current_step"] = 0
+                self.training_state["target_steps"] = self.hyper_param.num_iteration
+                self.training_state["completed"] = False
         else:
             if state_loaded:
                 if self.training_state["completed"]:
@@ -83,6 +87,7 @@ class Trainer:
             else:
                 self.training_state["current_step"] = 0
                 self.training_state["target_steps"] = self.hyper_param.num_iteration
+                self.training_state["fine_tuning"] = False
         
         # 初始化TensorBoard
         tensorboard_suffix = "fine-tuning" if self.training_state["fine_tuning"] else "training"
@@ -95,15 +100,33 @@ class Trainer:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         last_ckpt = ckpt_dir / "last.pt"
         
-        # 微调模式下，如果存在last.pt，加载它但重置学习率和scheduler
-        if self.training_state["fine_tuning"] and last_ckpt.exists():
-            print("Loading weights for fine-tuning but resetting optimizer and scheduler")
+        # 处理检查点加载逻辑
+        if self.hyper_param.checkpoint_path and Path(self.hyper_param.checkpoint_path).exists():
+            # 如果指定了checkpoint_path，优先使用它
+            checkpoint_path = Path(self.hyper_param.checkpoint_path)
+            if self.training_state["fine_tuning"]:
+                print(f"Loading checkpoint {checkpoint_path} for fine-tuning")
+                self._load_for_fine_tuning(checkpoint_path)
+            else:
+                print(f"Loading checkpoint {checkpoint_path} for resuming training")
+                self.model_manager.load_checkpoint(checkpoint_path)
+                # 确保step一致
+                self.training_state["current_step"] = self.model_manager.step
+        # 微调模式下，如果存在last.pt，加载它但重置优化器和scheduler
+        elif self.training_state["fine_tuning"] and last_ckpt.exists():
+            print("Loading last checkpoint for fine-tuning but resetting optimizer and scheduler")
             self._load_for_fine_tuning(last_ckpt)
         # 正常训练模式下，如果存在last.pt，恢复训练状态
         elif last_ckpt.exists() and not self.training_state["fine_tuning"]:
+            print(f"Loading last checkpoint for resuming normal training")
             self.model_manager.load_checkpoint(last_ckpt)
             # 确保step一致
             self.training_state["current_step"] = self.model_manager.step
+        
+        # 如果是微调模式且设置了专用微调学习率，则使用它
+        if self.training_state["fine_tuning"] and hasattr(self.hyper_param, 'finetune_lr') and self.hyper_param.finetune_lr is not None:
+            self.model_manager.update_learning_rate(self.hyper_param.finetune_lr)
+            print(f"Updated learning rate for fine-tuning: {self.hyper_param.finetune_lr}")
         
         # 添加模型结构和参数分布图
         batch_size_for_graph = self.hyper_param.fixed_batch_size or self.hyper_param.batch_size
@@ -227,11 +250,23 @@ class Trainer:
         Args:
             ckpt_path: 检查点路径
         """
-        checkpoint = torch.load(ckpt_path, weights_only=False)
+        # 设置权重加载选项以处理潜在的版本差异
+        checkpoint = torch.load(ckpt_path, map_location=self.device)
+        
         # 仅加载模型权重，不加载优化器和调度器状态
-        self.model_manager.model.load_state_dict(checkpoint["model_state_dict"])
+        if "model_state_dict" in checkpoint:
+            self.model_manager.model.load_state_dict(checkpoint["model_state_dict"])
+        else:
+            print(f"Warning: 检查点格式不正确，尝试直接加载到模型")
+            self.model_manager.model.load_state_dict(checkpoint)
+            
         # 重新初始化优化器和调度器
         self.model_manager.setup_optimizer()
+        
+        # 如果有微调专用学习率，使用它
+        if hasattr(self.hyper_param, 'finetune_lr') and self.hyper_param.finetune_lr is not None:
+            self.model_manager.update_learning_rate(self.hyper_param.finetune_lr)
+            
         # 重置步数
         self.model_manager.step = 0
         print(f"Loaded model weights from {ckpt_path} for fine-tuning (optimizer and scheduler reset)")

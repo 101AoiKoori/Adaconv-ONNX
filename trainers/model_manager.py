@@ -85,6 +85,30 @@ class ModelManager:
             max_lr=self.hyper_param.learning_rate,
             total_steps=self.hyper_param.num_iteration,
         )
+    
+    def update_learning_rate(self, new_lr):
+        """
+        更新学习率和重新设置优化器和调度器
+        
+        Args:
+            new_lr: 新的学习率
+        """
+        # 更新超参数中的学习率
+        self.hyper_param.learning_rate = new_lr
+        
+        # 重新创建优化器
+        self.optimizer = Adam(
+            self.model.parameters(), lr=new_lr
+        )
+        
+        # 重新创建调度器
+        self.scheduler = OneCycleLR(
+            self.optimizer,
+            max_lr=new_lr,
+            total_steps=self.hyper_param.num_iteration,
+        )
+        
+        print(f"已更新学习率: {new_lr}")
         
     def get_model_info(self):
         """
@@ -133,7 +157,7 @@ class ModelManager:
         Args:
             ckpt_path: Path to checkpoint
         """
-        checkpoint = torch.load(ckpt_path, weights_only=False)
+        checkpoint = torch.load(ckpt_path, map_location=self.device)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
@@ -147,8 +171,15 @@ class ModelManager:
         Args:
             ckpt_path: 检查点路径
         """
-        checkpoint = torch.load(ckpt_path, weights_only=False)
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        checkpoint = torch.load(ckpt_path, map_location=self.device)
+        if "model_state_dict" in checkpoint:
+            self.model.load_state_dict(checkpoint["model_state_dict"])
+        else:
+            print(f"警告: 检查点格式不正确，尝试直接加载到模型")
+            self.model.load_state_dict(checkpoint)
+            
+        # 重置步数
+        self.step = 0
         print(f"Loaded model weights only from {ckpt_path} for fine-tuning")
         
     def forward(self, contents, styles, return_features=False):

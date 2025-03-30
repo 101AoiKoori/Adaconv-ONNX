@@ -36,6 +36,11 @@ class Hyperparameter(BaseModel):
     summary_step: int = 100
     max_ckpts: int = 3
     
+    # 微调相关参数
+    checkpoint_path: Optional[str] = None  # 加载特定检查点的路径
+    finetune_lr: Optional[float] = None    # 微调专用学习率
+    finetune_iteration: int = 50000  # 微调迭代次数
+
     @validator('image_shape')
     def validate_image_shape(cls, v, values):
         """Ensure image_shape is a tuple of two integers"""
@@ -64,3 +69,9 @@ class Hyperparameter(BaseModel):
             # Calculate from ratios
             base_channels = [512, 256, 128, 64]
             return [max(1, int(c * r)) for c, r in zip(base_channels, self.groups_ratios)]
+        
+    @validator('num_iteration')
+    def validate_iterations(cls, v, values):
+        if values.get('finetune_lr') and not values.get('checkpoint_path'):
+            raise ValueError("微调模式需要提供checkpoint_path")
+        return v
