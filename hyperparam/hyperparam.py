@@ -13,14 +13,14 @@ class Hyperparameter(BaseModel):
     image_shape: Tuple[int, int] = (256, 256)  
     style_dim: int = 512
     style_kernel: int = 3
-    
+    style_weight: float = 100.0
+
     # Group configuration
     groups_ratios: List[float] = [1.0, 0.5, 0.25, 0.125]
     groups: Optional[Union[int, List[int]]] = None
     groups_list: Optional[List[int]] = None
 
     # Training params
-    style_weight: float = 100.0
     learning_rate: float = 0.0001
     batch_size: int = 8
     fixed_batch_size: Optional[int] = 8
@@ -36,6 +36,11 @@ class Hyperparameter(BaseModel):
     summary_step: int = 100
     max_ckpts: int = 3
     
+    # Fine-tuning specific params
+    finetune_learning_rate: Optional[float] = None
+    finetune_iterations: Optional[int] = None
+    pretrained_model: Optional[str] = None  # 添加预训练模型路径
+
     @validator('image_shape')
     def validate_image_shape(cls, v, values):
         """Ensure image_shape is a tuple of two integers"""

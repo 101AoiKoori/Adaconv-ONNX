@@ -43,7 +43,7 @@ def demo():
 
     # Load model weights (if available)
     try:
-        checkpoint = torch.load(model_path, map_location=device, weights_only=True)
+        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
         model_dict = model.state_dict()
         pretrained_dict = {k: v for k, v in checkpoint.items() if k in model_dict and v.shape == model_dict[k].shape}
         model_dict.update(pretrained_dict)

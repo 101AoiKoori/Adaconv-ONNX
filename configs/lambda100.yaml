@@ -1,6 +1,6 @@
 # Basic model parameters
 image_size: 256  
-#image_shape: [256, 256]
+image_shape: [256, 256]
 style_dim: 512
 style_kernel: 3
 style_weight: 10.0
@@ -19,9 +19,14 @@ num_iteration: 160000
 fixed_batch_size: 8
 use_fixed_size: false
 
+# Fine-tuning parameters
+finetune_learning_rate: 0.00001
+finetune_iterations: 40000
+pretrained_model: ./logs/ckpts/last.pt  
+
 # Logging parameters
 log_step: 10
-save_step: 1000
-summary_step: 200
+save_step: 10000
+summary_step: 160
 max_ckpts: 3
 resize_size: 512

@@ -277,21 +277,24 @@ class VisualizationManager:
                                       torch.cuda.max_memory_allocated() / (1024**3),
                                       step)
                                       
-    def log_performance_metrics(self, current_batch_time, current_examples_per_sec,batch_time, examples_per_sec, progress, step):
+    def log_performance_metrics(self, current_batch_time, current_examples_per_sec, batch_time, examples_per_sec, progress, step, prefix=""):
         """
         Log performance metrics
         
         Args:
-            batch_time: Time taken for current batch
-            examples_per_sec: Examples processed per second
+            current_batch_time: Time taken for current batch
+            current_examples_per_sec: Examples processed per second
+            batch_time: Average time taken for batches
+            examples_per_sec: Average examples processed per second
             progress: Training progress as percentage
             step: Current training step
+            prefix: Prefix for metric names
         """
-        self.writer.add_scalar('Performance/Current_Batch_Time', current_batch_time, step)
-        self.writer.add_scalar('Performance/Current_Examples_Per_Second', current_examples_per_sec, step)
-        self.writer.add_scalar('Performance/Batch_Time_Seconds', batch_time, step)
-        self.writer.add_scalar('Performance/Examples_Per_Second', examples_per_sec, step)
-        self.writer.add_scalar('Performance/Progress_Percent', progress * 100, step)
+        self.writer.add_scalar(f"{prefix}Performance/Current_Batch_Time", current_batch_time, step)
+        self.writer.add_scalar(f"{prefix}Performance/Current_Examples_Per_Second", current_examples_per_sec, step)
+        self.writer.add_scalar(f"{prefix}Performance/Batch_Time_Seconds", batch_time, step)
+        self.writer.add_scalar(f"{prefix}Performance/Examples_Per_Second", examples_per_sec, step)
+        self.writer.add_scalar(f"{prefix}Performance/Progress_Percent", progress * 100, step)
         
     def log_eta(self, eta_seconds, step):
         """
@@ -305,18 +308,17 @@ class VisualizationManager:
         self.writer.add_scalar('Training/ETA_Minutes', eta_seconds / 60, step)
         self.writer.add_text('Training/ETA', f"Estimated time remaining: {eta_str}", step)
 
-    def calculate_ssim_psnr(self, real_images, fake_images, step):
+    def calculate_ssim_psnr(self, real_images, fake_images, step, prefix=""):
         """
         Calculate SSIM and PSNR metrics and log them to TensorBoard
         
         Args:
-            real_images: Real image tensors
+            real_images: Real image tensorsw
             fake_images: Generated image tensors
             step: Current training step
+            prefix: Prefix for metric names
         """
         # 忽略 TypedStorage 警告
-        
-
         try:
             # Calculate SSIM and PSNR
             ssim_values = []
@@ -350,12 +352,12 @@ class VisualizationManager:
             # Calculate averages if we have any valid values
             if ssim_values:
                 avg_ssim = np.mean(ssim_values)
-                self.writer.add_scalar('Metrics/SSIM', avg_ssim, step)
+                self.writer.add_scalar(f"{prefix}Metrics/SSIM" if prefix else "Metrics/SSIM", avg_ssim, step)
                 print(f"Average SSIM: {avg_ssim:.4f}")
             
             if psnr_values:
                 avg_psnr = np.mean(psnr_values)
-                self.writer.add_scalar('Metrics/PSNR', avg_psnr, step)
+                self.writer.add_scalar(f"{prefix}Metrics/PSNR" if prefix else "Metrics/PSNR", avg_psnr, step)
                 print(f"Average PSNR: {avg_psnr:.4f}")
             
         except Exception as e:
@@ -363,7 +365,7 @@ class VisualizationManager:
             import traceback
             traceback.print_exc()  # Print full traceback for debugging
 
-    def write_training_metrics_and_images(self, train_loss, train_style_loss, train_content_loss, train_contents, train_styles, train_styled_content, step):
+    def write_training_metrics_and_images(self, train_loss, train_style_loss, train_content_loss, train_contents, train_styles, train_styled_content, step, prefix=""):
         """
         Write training metrics and images to TensorBoard
         
@@ -375,15 +377,18 @@ class VisualizationManager:
             train_styles: Training style images
             train_styled_content: Training styled content images
             step: Current training step
+            prefix: Prefix for metric and image names
         """
+        # 写入训练指标
         self.write_metrics({
             "loss": train_loss,
             "style_loss": train_style_loss,
             "content_loss": train_content_loss
-        }, step, prefix="train")
+        }, step, prefix=prefix)
 
+        # 写入训练图像
         self.write_images({
             "content_images": train_contents,
             "style_images": train_styles,
             "styled_content_images": train_styled_content
-        }, step, prefix="train")
+        }, step, prefix=prefix)
