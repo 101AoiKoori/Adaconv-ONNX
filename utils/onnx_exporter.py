@@ -7,6 +7,14 @@ from onnx import shape_inference
 from typing import Tuple, Dict, Optional
 from pathlib import Path
 from hyperparam.hyperparam import Hyperparameter
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message="Constant folding - Only steps=1 can be constant folded for opset >= 10 onnx::Slice op. Constant folding not applied.",
+    category=UserWarning,
+    module="torch.onnx"
+)
 
 
 def load_config(config_path: str) -> Hyperparameter:
@@ -86,7 +94,7 @@ def initialize_model(hyper_param: Hyperparameter, device: str) -> torch.nn.Modul
 
 def load_checkpoint(model: torch.nn.Module, checkpoint_path: str, device: str):
     """Load weights from checkpoint with compatibility handling"""
-    # 显式设置 weights_only=True
+    # 显式设置 weights_only=fasle，以便加载模型的其他信息
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     state_dict = checkpoint.get("model_state_dict", checkpoint)
     

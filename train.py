@@ -1,5 +1,6 @@
 import argparse
 import yaml
+from pathlib import Path
 from hyperparam.hyperparam import Hyperparameter
 from trainers.trainer import Trainer
 
@@ -51,28 +52,25 @@ def parse_opt():
         default=None,
         help="Image size (overrides config if provided)",
     )
-    # 微调模式参数
+    parser.add_argument(
+        "--style_weight",
+        type=float,
+        default=None,
+        help="Style weight for loss calculation (overrides config if provided)",
+    )
+    # 新增微调模式相关参数
     parser.add_argument(
         "--finetune",
         action="store_true",
-        help="启用微调模式：加载检查点但重置step和学习率",
-    )
-    # 检查点路径参数
-    parser.add_argument(
-        "--checkpoint",
-        type=str,
-        default=None,
-        help="加载指定的检查点文件进行训练或微调",
-    )
-    # 微调学习率参数
-    parser.add_argument(
-        "--finetune_lr",
-        type=float,
-        default=None,
-        help="微调时使用的学习率（通常比初始训练小）",
+        help="Enable fine-tuning mode",
     )
 
     opt = parser.parse_args()
+
+    # 校验微调模式参数
+    if opt.finetune:
+        # 在微调模式下，预训练模型路径从配置文件中读取
+        pass
 
     return opt
 
@@ -94,28 +92,27 @@ def main(opt):
         config_data["learning_rate"] = opt.learning_rate
     if opt.image_size:
         config_data["image_size"] = opt.image_size
-    
-    # 添加微调相关配置
-    if opt.checkpoint:
-        config_data["checkpoint_path"] = opt.checkpoint
-    if opt.finetune_lr:
-        config_data["finetune_lr"] = opt.finetune_lr
-    elif opt.finetune and not opt.finetune_lr:
-        # 如果是微调但未指定微调学习率，则默认为原学习率的十分之一
-        config_data["finetune_lr"] = config_data.get("learning_rate", 0.0001) * 0.1
+    if opt.style_weight:
+        config_data["style_weight"] = opt.style_weight
 
-    # Create Hyperparameter object
-    config = Hyperparameter(**config_data)
+    if opt.finetune:
+        # 设置微调模式下的logdir为logs/finetune
+        config_data["logdir"] = str(Path(config_data.get("logdir", "logs")) / "finetune")
+        config_data["learning_rate"] = config_data.get("finetune_learning_rate", config_data["learning_rate"] * 0.1)
+        config_data["num_iteration"] = config_data.get("finetune_iterations", int(config_data["num_iteration"] * 0.25))
+        pretrained_model_path = Path(config_data.get("pretrained_model", ""))
+        if not pretrained_model_path.exists():
+            raise FileNotFoundError(f"Pretrained model not found at {pretrained_model_path}")
 
-    # Initialize trainer
-    trainer = Trainer(config)
+    hyper_param = Hyperparameter(**config_data)
 
-    # Print configuration
-    print("Training Configuration:")
-    print(config.model_dump_json(indent=4))
+    trainer = Trainer(
+        hyper_param=hyper_param,
+        finetune_mode=opt.finetune,
+        pretrained_model_path=config_data.get("pretrained_model") if opt.finetune else None
+    )
 
-    # Start training - 传递finetune参数
-    trainer.train(fine_tuning=opt.finetune)
+    trainer.train()
 
 if __name__ == "__main__":
     opt = parse_opt()
