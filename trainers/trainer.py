@@ -5,7 +5,6 @@ from pathlib import Path
 import yaml
 import torch
 from torch.utils.tensorboard import SummaryWriter
-import json
 
 from trainers.data_manager import DataManager
 from trainers.model_manager import ModelManager
@@ -41,25 +40,7 @@ class Trainer:
         
         print(f"Training Initialized -> device: {self.device}, mode: {'Fine-tuning' if finetune_mode else 'Normal training'}")
 
-    def _load_training_state(self, state_path):
-        """加载训练状态"""
-        if Path(state_path).exists():
-            with open(state_path, 'r') as f:
-                self.training_state = json.load(f)
-            return True
-        return False
-
-    def _save_training_state(self, state_path):
-        """保存训练状态"""
-        with open(state_path, 'w') as f:
-            json.dump(self.training_state, f, indent=4)
-
-    def train(self, fine_tuning=False):
-        """训练模型
-
-        Args:
-            fine_tuning (bool): 是否为微调模式
-        """
+    def train(self):
         # 初始化日志和检查点目录
         Path(self.hyper_param.logdir).mkdir(parents=True, exist_ok=True)
         
@@ -142,9 +123,9 @@ class Trainer:
         _zfill = len(str(self.hyper_param.num_iteration))
 
         # 主训练循环
-        _zfill = len(str(self.hyper_param.num_iteration))
         training_start_time = datetime.datetime.now()
         batch_times = []
+        total_examples = 0
         self.model_manager.set_train(True)
         
         # 设置训练前缀（用于日志和检查点命名）
@@ -165,14 +146,12 @@ class Trainer:
             batch_times.append(duration_seconds)
 
             # 记录梯度可视化
-            if self.training_state["current_step"] % self.hyper_param.log_step == 0:
+            if self.model_manager.step % self.hyper_param.log_step == 0:
                 grad_fig = self.vis_manager.visualize_gradients(self.model_manager.named_parameters())
                 self.vis_manager.add_figure_to_tensorboard(f'{mode_prefix}Training/Gradients', grad_fig, self.model_manager.step)
                 self.vis_manager.log_system_metrics(self.model_manager.step, self.device)
 
-            # 更新模型参数
             self.model_manager.optimizer_step()
-            self.training_state["current_step"] = self.model_manager.step
             
             # 记录性能指标和图像
             if self.model_manager.step % self.hyper_param.summary_step == 0:
@@ -206,7 +185,7 @@ class Trainer:
                 batch_times = batch_times[-100:]
 
             # 保存检查点
-            if self.training_state["current_step"] % self.hyper_param.save_step == 0:
+            if self.model_manager.step % self.hyper_param.save_step == 0:
                 # 生成当前检查点路径
                 current_ckpt = ckpt_dir / f"{mode_prefix}model_step_{str(self.model_manager.step).zfill(_zfill)}.pt"
                 
@@ -224,7 +203,7 @@ class Trainer:
                         old_ckpt.unlink()
 
             # 打印日志
-            if self.training_state["current_step"] % self.hyper_param.log_step == 0:
+            if self.model_manager.step % self.hyper_param.log_step == 0:
                 current_lr = self.model_manager.get_lr()
                 self.vis_manager.writer.add_scalar(f"{mode_prefix}Training/Learning_Rate", current_lr, self.model_manager.step)
                 examples_per_sec = self.hyper_param.batch_size / (datetime.datetime.now() - start_time).total_seconds()
@@ -235,9 +214,6 @@ class Trainer:
                     f"{examples_per_sec:.2f} ex/s"
                 )
 
-        # 训练完成
-        self.training_state["completed"] = True
-        self._save_training_state(state_path)
         self.vis_manager.writer.close()
         print(f"{'Fine-tuning' if self.finetune_mode else 'Training'} Done.")
 

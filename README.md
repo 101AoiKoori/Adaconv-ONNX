@@ -2,7 +2,9 @@
 使得adaconv可以转换为onnx
 ## <p>运行指令大全：</p>
 ### <p>运行</p>
+#### 训练
 - python train.py -c ./configs/lambda100.yaml -d ./data/raw -l ./logs</br>
+#### 微调
 - python train.py -c ./configs/lambda100.yaml -d ./data/256 --finetune</br>
 ---
 ### <p>查看数据</p>
