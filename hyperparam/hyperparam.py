@@ -1,7 +1,6 @@
-from pydantic import BaseModel, validator
-from typing import Optional, List, Tuple, Union, Any
+from pydantic import BaseModel, validator, root_validator
+from typing import Optional, List, Tuple, Union, Any, Dict
 from pydantic.fields import Field
-import math
 
 class Hyperparameter(BaseModel):
     # Dataset params
@@ -23,11 +22,12 @@ class Hyperparameter(BaseModel):
     # Training params
     learning_rate: float = 0.0001
     batch_size: int = 8
-    fixed_batch_size: Optional[int] = 8
+    fixed_batch_size: Optional[int] = None
     resize_size: int = 512 
     
     # Export params
     use_fixed_size: bool = False  # For static computational graph
+    export_mode: bool = False     # Enable export mode
     
     # Training iteration params
     num_iteration: int = 160000
@@ -39,39 +39,46 @@ class Hyperparameter(BaseModel):
     # Fine-tuning specific params
     finetune_learning_rate: Optional[float] = None
     finetune_iterations: Optional[int] = None
-    pretrained_model: Optional[str] = None  # 添加预训练模型路径
+    pretrained_model: Optional[str] = None  # 预训练模型路径
 
     @validator('image_shape')
     def validate_image_shape(cls, v, values):
-        """Ensure image_shape is a tuple of two integers"""
+        """确保image_shape是一个由两个整数组成的元组"""
         if not isinstance(v, tuple) or len(v) != 2:
-            # If not a proper tuple, try to convert from image_size
+            # 如果不是正确的元组格式，尝试从image_size转换
             image_size = values.get('image_size', 256)
             return (image_size, image_size)
         return v
     
     @validator('groups')
     def validate_groups(cls, v):
-        """Convert groups to list if it's an integer"""
+        """如果groups是一个整数，则将其转换为列表"""
         if isinstance(v, int):
-            return [v] * 4
+            return [v] * 4  # 为4个解码器层创建相同的分组值
         return v
     
     def get_groups(self) -> List[int]:
-        """Get the final groups configuration"""
-        # Priority: groups_list > groups > calculated from ratios
+        """获取最终的分组配置"""
+        # 优先级: groups_list > groups > 基于ratios计算
         if self.groups_list:
             return self.groups_list
         elif self.groups:
-            # Already validated to be a list
+            # 已经通过验证器转换为列表
             return self.groups
         else:
-            # Calculate from ratios
+            # 基于比例计算
             base_channels = [512, 256, 128, 64]
             return [max(1, int(c * r)) for c, r in zip(base_channels, self.groups_ratios)]
+            
+    def create_export_config(self) -> Dict[str, Any]:
+        """创建用于模型导出的配置字典"""
+        return {
+            'export_mode': self.export_mode,
+            'fixed_batch_size': self.fixed_batch_size,
+            'use_fixed_size': self.use_fixed_size
+        }
         
-    @validator('num_iteration')
-    def validate_iterations(cls, v, values):
-        if values.get('finetune_lr') and not values.get('checkpoint_path'):
-            raise ValueError("微调模式需要提供checkpoint_path")
-        return v
+    class Config:
+        """Pydantic配置"""
+        validate_assignment = True  # 在属性赋值时验证
+        arbitrary_types_allowed = True  # 允许任意类型

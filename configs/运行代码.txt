@@ -1,0 +1,20 @@
+python train.py -c ./configs/lambda100.yaml -d ./data/256 -l ./logs
+python train.py -c ./configs/lambda100.yaml -d ./data/256 --finetune
+
+tensorboard --logdir=./logs/tensorboard
+tensorboard --logdir=./logs/finetune/tensorboard
+
+python script_visualization.py
+python script_export.py --output model.onnx
+python test.py
+
+
+python train.py -c ./configs/lambda100.yaml -d ./data/256 --finetune --pretrained_model ./path/to/pretrained_model.pt
+
+
+nohup python train.py -c ./configs/lambda100.yaml -d ./data/raw -l ./logs > output.log 2>&1 &
+ps aux | grep "python train.py"
+pkill -f "python train.py"
+
+pip install torch==2.5.1+cu121 torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt

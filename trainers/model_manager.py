@@ -57,14 +57,20 @@ class ModelManager:
         # Save these computed parameters for visualization
         self.groups = groups
 
-        # Create the model
+        # 创建导出配置
+        export_config = {
+            'export_mode': False,  # 训练时不启用导出模式
+            'fixed_batch_size': self.hyper_param.fixed_batch_size,
+            'use_fixed_size': self.hyper_param.use_fixed_size
+        }
+
+        # Create the model (使用export_config代替单独的参数)
         self.model = StyleTransfer(
             image_shape=self.image_shape,
             style_dim=self.hyper_param.style_dim,
             style_kernel=self.hyper_param.style_kernel,
             groups=groups,
-            fixed_batch_size=self.hyper_param.fixed_batch_size,
-            use_fixed_size=self.hyper_param.use_fixed_size
+            export_config=export_config
         ).to(self.device)
         
         # Count model parameters
@@ -119,14 +125,20 @@ class ModelManager:
         Returns:
             dict: Dictionary with model structure information
         """
+        # 获取模型的导出配置信息
+        export_mode = hasattr(self.model, 'export_mode') and self.model.export_mode
+        fixed_batch_size = self.hyper_param.fixed_batch_size
+        use_fixed_size = self.hyper_param.use_fixed_size
+        
         return {
             "Image Shape": str(self.image_shape),
             "Style Dim": self.hyper_param.style_dim,
             "Style Kernel": self.hyper_param.style_kernel,
             "Groups": str(self.groups),
             "Batch Size": self.hyper_param.batch_size,
-            "Fixed Batch Size": self.hyper_param.fixed_batch_size,
-            "Use Fixed Size": self.hyper_param.use_fixed_size,
+            "Fixed Batch Size": fixed_batch_size,
+            "Use Fixed Size": use_fixed_size,
+            "Export Mode": export_mode,
             "Total Parameters": f"{self.model_params:,}",
             "Finetune Mode": self.finetune_mode,
         }
@@ -271,3 +283,7 @@ class ModelManager:
             mode: True for train mode, False for eval mode
         """
         self.model.train(mode)
+        
+        # 如果切换到评估模式，确保冻结归一化层
+        if not mode and hasattr(self.model, 'freeze_normalization_layers'):
+            self.model.freeze_normalization_layers()
