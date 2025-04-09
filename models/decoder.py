@@ -19,7 +19,7 @@ class DecoderBlock(nn.Module):
         out_channels: int,
         groups: int,
         export_config: Dict[str, Any] = None,
-        convs: int = 1,
+        convs: int = 3,
         final_block: bool = False,
         scale_factor: int = 2,
     ) -> None:

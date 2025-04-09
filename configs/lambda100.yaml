@@ -1,33 +1,36 @@
-# Basic model parameters
+# 基本模型参数
 image_size: 256  
 image_shape: [256, 256]
 style_dim: 512
 style_kernel: 3
 style_weight: 10.0
 
-# Groups configuration - choose one approach:
+# 分组配置 - 选择一种方法:
 groups_ratios: [1.0, 0.5, 0.25, 0.125]
 groups: null
 groups_list: null
 
-# Training parameters
+# 训练参数
 batch_size: 8
 learning_rate: 0.0001
 num_iteration: 160000
 
-# Export configuration
-fixed_batch_size: 8
-use_fixed_size: false
-export_mode: false
-
-# Fine-tuning parameters
-finetune_learning_rate: 0.00001
-finetune_iterations: 40000
-pretrained_model: ./logs/ckpts/last.pt  
-
-# Logging parameters
+# 日志参数
 log_step: 10
 save_step: 100
 summary_step: 160
 max_ckpts: 3
 resize_size: 512
+
+# 导出配置
+fixed_batch_size: 8
+use_fixed_size: false
+export_mode: false
+
+# 微调参数
+finetune_learning_rate: 0.00001
+finetune_iterations: 40000
+pretrained_model: ./logs/ckpts/last.pt
+
+# 频率控制
+metrics_calc_interval: 10
