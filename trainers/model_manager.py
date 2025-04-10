@@ -24,7 +24,7 @@ class ModelManager:
         
         Args:
             hyper_param: Hyperparameter configuration
-            finetune_mode: 是否为微调模式
+            finetune_mode: Whether in fine-tuning mode
         """
         self.hyper_param = hyper_param
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -57,14 +57,14 @@ class ModelManager:
         # Save these computed parameters for visualization
         self.groups = groups
 
-        # 创建导出配置
+        # Create export configuration
         export_config = {
-            'export_mode': False,  # 训练时不启用导出模式
+            'export_mode': False,  # Don't enable export mode during training
             'fixed_batch_size': self.hyper_param.fixed_batch_size,
             'use_fixed_size': self.hyper_param.use_fixed_size
         }
 
-        # Create the model (使用export_config代替单独的参数)
+        # Create the model
         self.model = StyleTransfer(
             image_shape=self.image_shape,
             style_dim=self.hyper_param.style_dim,
@@ -83,11 +83,13 @@ class ModelManager:
         
     def setup_optimizer(self):
         """Initialize optimizer and scheduler"""
-        # 支持从命令行传入的学习率参数覆盖配置文件
+        # Create optimizer
         self.optimizer = Adam(
-            self.model.parameters(), lr=self.hyper_param.learning_rate
+            self.model.parameters(), 
+            lr=self.hyper_param.learning_rate
         )
-        # 确保总步数正确
+        
+        # Create learning rate scheduler
         self.scheduler = OneCycleLR(
             self.optimizer,
             max_lr=self.hyper_param.learning_rate,
@@ -96,27 +98,27 @@ class ModelManager:
     
     def update_learning_rate(self, new_lr):
         """
-        更新学习率和重新设置优化器和调度器
+        Update learning rate and reset optimizer and scheduler
         
         Args:
-            new_lr: 新的学习率
+            new_lr: New learning rate
         """
-        # 更新超参数中的学习率
+        # Update learning rate in hyperparameters
         self.hyper_param.learning_rate = new_lr
         
-        # 重新创建优化器
+        # Recreate optimizer
         self.optimizer = Adam(
             self.model.parameters(), lr=new_lr
         )
         
-        # 重新创建调度器
+        # Recreate scheduler
         self.scheduler = OneCycleLR(
             self.optimizer,
             max_lr=new_lr,
             total_steps=self.hyper_param.num_iteration,
         )
         
-        print(f"已更新学习率: {new_lr}")
+        print(f"Updated learning rate: {new_lr}")
         
     def get_model_info(self):
         """
@@ -125,7 +127,7 @@ class ModelManager:
         Returns:
             dict: Dictionary with model structure information
         """
-        # 获取模型的导出配置信息
+        # Get model export configuration info
         export_mode = hasattr(self.model, 'export_mode') and self.model.export_mode
         fixed_batch_size = self.hyper_param.fixed_batch_size
         use_fixed_size = self.hyper_param.use_fixed_size
@@ -149,7 +151,7 @@ class ModelManager:
         
         Args:
             ckpt_path: Path to save checkpoint
-            is_finetune_ckpt: 是否为微调模式的检查点
+            is_finetune_ckpt: Whether this is a fine-tuning mode checkpoint
         """
         torch.save(
             {
@@ -170,14 +172,14 @@ class ModelManager:
         
         Args:
             ckpt_path: Path to checkpoint
-            reset_step: 是否重置步数（用于微调）
-            reset_optimizer: 是否重置优化器状态（用于微调）
+            reset_step: Whether to reset step count (for fine-tuning)
+            reset_optimizer: Whether to reset optimizer state (for fine-tuning)
         """
-        checkpoint = torch.load(ckpt_path, map_location=self.device)
+        checkpoint = torch.load(ckpt_path, map_location=self.device,weights_only=True)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         
         if reset_optimizer:
-            # 重新初始化优化器，以便使用新的学习率
+            # Reinitialize optimizer to use new learning rate
             self.setup_optimizer()
             print(f"Reset optimizer with new learning rate: {self.hyper_param.learning_rate}")
         else:
@@ -185,13 +187,13 @@ class ModelManager:
             self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         
         if reset_step:
-            # 微调模式下，重置步数为0
+            # In fine-tuning mode, reset step count to 0
             self.step = 0
             print("Reset step counter to 0 for fine-tuning")
         else:
             self.step = checkpoint["steps"]
         
-        # 检查是否为微调检查点
+        # Check if this is a fine-tuning checkpoint
         is_finetune = checkpoint.get("is_finetune_ckpt", False)
         original_num_iteration = checkpoint.get("original_num_iteration", self.hyper_param.num_iteration)
         
@@ -209,8 +211,8 @@ class ModelManager:
         Forward pass through the model
         
         Args:
-            contents: Content images tensor
-            styles: Style images tensor
+            contents: Content image tensor
+            styles: Style image tensor
             return_features: Whether to return intermediate features
         
         Returns:
@@ -231,28 +233,34 @@ class ModelManager:
     
     def reset_for_finetuning(self, new_lr=None):
         """
-        重置优化器和学习率调度器，准备进行微调
+        Reset optimizer and learning rate scheduler for fine-tuning
         
         Args:
-            new_lr: 微调时使用的新学习率，如果为None则使用配置中的值
+            new_lr: New learning rate for fine-tuning, if None uses config value
         """
         if new_lr is not None:
             self.hyper_param.learning_rate = new_lr
+        elif self.hyper_param.finetune_learning_rate is not None:
+            self.hyper_param.learning_rate = self.hyper_param.finetune_learning_rate
             
-        # 重置步数
+        # Reset step counter
         self.step = 0
         
-        # 重新初始化优化器和调度器
+        # Reinitialize optimizer and scheduler
         self.setup_optimizer()
         
-        # 设置微调模式
+        # Set fine-tuning mode
         self.finetune_mode = True
         
         print(f"Model reset for fine-tuning with learning rate {self.hyper_param.learning_rate}")
     
     def optimizer_step(self):
         """Perform optimization step with gradient clipping"""
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
+        # Standard gradient clipping value
+        max_norm = 10.0
+            
+        # Execute gradient clipping
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=max_norm)
         self.optimizer.step()
         self.scheduler.step()
         self.step += 1
@@ -284,6 +292,6 @@ class ModelManager:
         """
         self.model.train(mode)
         
-        # 如果切换到评估模式，确保冻结归一化层
+        # If switching to eval mode, ensure normalization layers are frozen
         if not mode and hasattr(self.model, 'freeze_normalization_layers'):
             self.model.freeze_normalization_layers()

@@ -36,49 +36,59 @@ class Hyperparameter(BaseModel):
     summary_step: int = 100
     max_ckpts: int = 3
     
+    # Metrics calculation frequency
+    metrics_calc_interval: int = 10  # Multiplier for SSIM/PSNR calculation interval
+    
     # Fine-tuning specific params
     finetune_learning_rate: Optional[float] = None
     finetune_iterations: Optional[int] = None
-    pretrained_model: Optional[str] = None  # 预训练模型路径
+    pretrained_model: Optional[str] = None  # Path to pretrained model
 
     @validator('image_shape')
     def validate_image_shape(cls, v, values):
-        """确保image_shape是一个由两个整数组成的元组"""
+        """Ensure image_shape is a tuple of two integers"""
         if not isinstance(v, tuple) or len(v) != 2:
-            # 如果不是正确的元组格式，尝试从image_size转换
+            # If not a proper tuple, try to convert from image_size
             image_size = values.get('image_size', 256)
             return (image_size, image_size)
         return v
     
     @validator('groups')
     def validate_groups(cls, v):
-        """如果groups是一个整数，则将其转换为列表"""
+        """If groups is an integer, convert it to a list"""
         if isinstance(v, int):
-            return [v] * 4  # 为4个解码器层创建相同的分组值
+            return [v] * 4  # Create same group value for all 4 decoder layers
         return v
     
     def get_groups(self) -> List[int]:
-        """获取最终的分组配置"""
-        # 优先级: groups_list > groups > 基于ratios计算
+        """Get the final groups configuration"""
+        # Priority: groups_list > groups > calculated from ratios
         if self.groups_list:
             return self.groups_list
         elif self.groups:
-            # 已经通过验证器转换为列表
+            # Already validated to be a list
             return self.groups
         else:
-            # 基于比例计算
+            # Calculate based on ratios
             base_channels = [512, 256, 128, 64]
             return [max(1, int(c * r)) for c, r in zip(base_channels, self.groups_ratios)]
             
     def create_export_config(self) -> Dict[str, Any]:
-        """创建用于模型导出的配置字典"""
+        """Create export configuration dictionary for model export"""
         return {
             'export_mode': self.export_mode,
             'fixed_batch_size': self.fixed_batch_size,
             'use_fixed_size': self.use_fixed_size
         }
         
+    def get_finetune_config(self) -> Dict[str, Any]:
+        """Get fine-tuning mode configuration"""
+        return {
+            'learning_rate': self.finetune_learning_rate or self.learning_rate * 0.1,
+            'num_iteration': self.finetune_iterations or int(self.num_iteration * 0.25),
+        }
+        
     class Config:
-        """Pydantic配置"""
-        validate_assignment = True  # 在属性赋值时验证
-        arbitrary_types_allowed = True  # 允许任意类型
+        """Pydantic configuration"""
+        validate_assignment = True  # Validate on attribute assignment
+        arbitrary_types_allowed = True  # Allow arbitrary types
