@@ -175,7 +175,7 @@ class ModelManager:
             reset_step: Whether to reset step count (for fine-tuning)
             reset_optimizer: Whether to reset optimizer state (for fine-tuning)
         """
-        checkpoint = torch.load(ckpt_path, map_location=self.device,weights_only=True)
+        checkpoint = torch.load(ckpt_path, map_location=self.device, weights_only=True)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         
         if reset_optimizer:

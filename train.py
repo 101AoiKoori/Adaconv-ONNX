@@ -58,7 +58,7 @@ def parse_opt():
         default=None,
         help="Style weight for loss calculation (overrides config if provided)",
     )
-    # 新增微调模式相关参数
+    # New finetune-related arguments
     parser.add_argument(
         "--finetune",
         action="store_true",
@@ -67,9 +67,9 @@ def parse_opt():
 
     opt = parser.parse_args()
 
-    # 校验微调模式参数
+    # Validate finetune mode arguments
     if opt.finetune:
-        # 在微调模式下，预训练模型路径从配置文件中读取
+        # In finetune mode, pretrained model path is read from config
         pass
 
     return opt
@@ -96,7 +96,7 @@ def main(opt):
         config_data["style_weight"] = opt.style_weight
 
     if opt.finetune:
-        # 设置微调模式下的logdir为logs/finetune
+        # Set logdir to logs/finetune in finetune mode
         config_data["logdir"] = str(Path(config_data.get("logdir", "logs")) / "finetune")
         config_data["learning_rate"] = config_data.get("finetune_learning_rate", config_data["learning_rate"] * 0.1)
         config_data["num_iteration"] = config_data.get("finetune_iterations", int(config_data["num_iteration"] * 0.25))

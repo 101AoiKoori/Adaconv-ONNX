@@ -7,9 +7,9 @@ from models.blocks import AdaConv2D, KernelPredictor
 
 class DecoderBlock(nn.Module):
     """
-    解码器块 - 自适应卷积和常规卷积的组合块
+    Decoder Block - A combination of adaptive convolution and regular convolution blocks
     
-    支持动态/静态模式切换，适配ONNX导出
+    Supports dynamic/static mode switching for ONNX export
     """
     def __init__(
         self,
@@ -25,7 +25,7 @@ class DecoderBlock(nn.Module):
     ) -> None:
         super().__init__()
         
-        # 处理导出配置
+        # Handle export configuration
         self.export_config = export_config or {}
         self.export_mode = self.export_config.get('export_mode', False)
         self.fixed_batch_size = self.export_config.get('fixed_batch_size', None) if self.export_mode else None
@@ -34,7 +34,7 @@ class DecoderBlock(nn.Module):
         self.output_hw = self.export_config.get('output_hw', None)
         self.scale_factor = scale_factor
         
-        # 内部KernelPredictor和AdaConv2D共享导出设置
+        # Shared export settings for internal components
         self.kernel_predictor = KernelPredictor(
             style_dim=style_dim,
             in_channels=in_channels,
@@ -54,7 +54,7 @@ class DecoderBlock(nn.Module):
             fixed_hw=self.input_hw if self.use_fixed_size else None
         )
 
-        # 构建标准卷积层序列
+        # Build standard convolution sequence
         decoder_layers = []
         for i in range(convs):
             last_layer = i == (convs - 1)
@@ -68,28 +68,28 @@ class DecoderBlock(nn.Module):
                     padding_mode="zeros",
                 )
             )
-            # 添加激活函数
+            # Add activation
             if not last_layer or not final_block:
                 decoder_layers.append(nn.ReLU())
             else:
-                decoder_layers.append(nn.Sigmoid())  # 最终输出层使用Sigmoid
+                decoder_layers.append(nn.Sigmoid())  # Use Sigmoid for final output
         
         self.decoder_layers = nn.Sequential(*decoder_layers)
         
-        # 上采样层 - 根据模式选择实现方式
+        # Upsampling layer - choose implementation based on mode
         if not final_block:
             if self.use_fixed_size and self.output_hw is not None:
-                # 固定尺寸上采样 - 使用预定义输出尺寸
+                # Fixed-size upsampling using predefined output dimensions
                 self.upsample = self._create_fixed_upsample(self.output_hw)
             else:
-                # 动态尺寸上采样 - 使用比例因子
+                # Dynamic upsampling using scale factor
                 self.upsample = self._create_scaled_upsample(scale_factor)
         else:
-            # 最终块不需要上采样
+            # No upsampling needed for final block
             self.upsample = nn.Identity()
     
     def _create_fixed_upsample(self, output_hw: Tuple[int, int]) -> nn.Module:
-        """创建固定尺寸上采样层 - 适配ONNX导出"""
+        """Create fixed-size upsampling layer for ONNX export"""
         class FixedUpsample(nn.Module):
             def __init__(self, output_size: Tuple[int, int]):
                 super().__init__()
@@ -106,7 +106,7 @@ class DecoderBlock(nn.Module):
         return FixedUpsample(output_hw)
     
     def _create_scaled_upsample(self, scale_factor: float) -> nn.Module:
-        """创建比例因子上采样层 - 适配动态尺寸"""
+        """Create scale-factor-based upsampling for dynamic sizes"""
         class ScaledUpsample(nn.Module):
             def __init__(self, factor: float):
                 super().__init__()
@@ -124,25 +124,25 @@ class DecoderBlock(nn.Module):
 
     def forward(self, x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
         """
-        前向传播
+        Forward pass
         
         Args:
-            x: 输入特征 [B, C, H, W]
-            w: 风格描述符 [B, style_dim, kernel_h, kernel_w]
+            x: Input feature [B, C, H, W]
+            w: Style descriptor [B, style_dim, kernel_h, kernel_w]
             
         Returns:
-            处理后的特征 [B, C_out, H_out, W_out]
+            Processed feature [B, C_out, H_out, W_out]
         """
-        # 预测自适应卷积核
+        # Predict adaptive convolution kernels
         dw_kernels, pw_kernels, biases = self.kernel_predictor(w)
         
-        # 应用自适应卷积
+        # Apply adaptive convolution
         x = self.ada_conv(x, dw_kernels, pw_kernels, biases)
         
-        # 应用标准卷积层
+        # Apply standard convolution layers
         x = self.decoder_layers(x)
         
-        # 应用上采样（如果需要）
+        # Apply upsampling (if needed)
         x = self.upsample(x)
         
         return x
@@ -150,9 +150,9 @@ class DecoderBlock(nn.Module):
 
 class Decoder(nn.Module):
     """
-    解码器 - 将内容特征和风格描述符转换为风格化图像
+    Decoder - Converts content features and style descriptors into stylized images
     
-    支持动态/静态模式切换，适配ONNX导出
+    Supports dynamic/static mode switching for ONNX export
     """
     def __init__(
         self, 
@@ -165,19 +165,19 @@ class Decoder(nn.Module):
         self.style_dim = style_dim
         self.style_kernel = style_kernel
         
-        # 处理导出配置
+        # Handle export configuration
         self.export_config = export_config or {}
         self.export_mode = self.export_config.get('export_mode', False)
         self.fixed_batch_size = self.export_config.get('fixed_batch_size', None) if self.export_mode else None
         self.use_fixed_size = self.export_config.get('use_fixed_size', False)
         self.input_hw = self.export_config.get('input_hw', None)
         
-        # 设置层级结构的参数
-        self.input_channels = [512, 256, 128, 64]  # 每层的输入通道数
-        self.output_channels = [256, 128, 64, 3]   # 每层的输出通道数
-        self.n_convs = [1, 2, 2, 4]                # 每层的卷积数量
+        # Layer structure parameters
+        self.input_channels = [512, 256, 128, 64]  # Input channels per layer
+        self.output_channels = [256, 128, 64, 3]   # Output channels per layer
+        self.n_convs = [1, 2, 2, 4]                # Number of convolutions per layer
         
-        # 处理分组参数：单整数或列表
+        # Handle group parameter: int or list
         if isinstance(groups, int):
             self.groups_list = [groups] * len(self.input_channels)
         elif isinstance(groups, list):
@@ -185,7 +185,7 @@ class Decoder(nn.Module):
                 raise ValueError(f"Groups list length ({len(groups)}) must match number of decoder layers ({len(self.input_channels)})")
             self.groups_list = groups
         else:
-            # 默认分组策略：基于输入通道动态计算
+            # Default grouping strategy: dynamic calculation based on input channels
             self.groups_list = []
             for c in self.input_channels:
                 if c >= 512:
@@ -197,30 +197,30 @@ class Decoder(nn.Module):
                 else:
                     self.groups_list.append(c // 8)
                     
-            # 确保每组至少有1个通道
+            # Ensure at least 1 channel per group
             self.groups_list = [max(1, g) for g in self.groups_list]
 
-        # 构建解码器块
+        # Build decoder blocks
         decoder_blocks = []
         current_hw = self.input_hw
         
         for i, (Cin, Cout, Nc, Group) in enumerate(zip(
             self.input_channels, self.output_channels, self.n_convs, self.groups_list
         )):
-            # 确定是否为最终块
+            # Determine if final block
             final_block = (i == len(self.input_channels) - 1)
             
-            # 计算输出尺寸（如果使用固定尺寸）
+            # Calculate output dimensions (if using fixed size)
             output_hw = None
             if self.use_fixed_size and current_hw is not None:
                 if not final_block:
-                    # 非最终块：尺寸翻倍
+                    # Non-final block: double size
                     output_hw = (current_hw[0] * 2, current_hw[1] * 2)
                 else:
-                    # 最终块：保持尺寸不变
+                    # Final block: keep size unchanged
                     output_hw = current_hw
             
-            # 为当前块创建导出配置
+            # Create export config for current block
             block_export_config = {
                 'export_mode': self.export_mode,
                 'fixed_batch_size': self.fixed_batch_size,
@@ -229,7 +229,7 @@ class Decoder(nn.Module):
                 'output_hw': output_hw
             }
             
-            # 创建解码器块
+            # Create decoder block
             decoder_blocks.append(
                 DecoderBlock(
                     style_dim=style_dim,
@@ -243,25 +243,25 @@ class Decoder(nn.Module):
                 )
             )
             
-            # 更新当前尺寸（用于下一层）
+            # Update current dimensions (for next layer)
             if self.use_fixed_size:
                 current_hw = output_hw
                 
-        # 保存解码器块序列
+        # Save decoder block sequence
         self.decoder_blocks = nn.ModuleList(decoder_blocks)
 
     def forward(self, x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
         """
-        前向传播
+        Forward pass
         
         Args:
-            x: 输入特征 [B, C, H, W]
-            w: 风格描述符 [B, style_dim, kernel_h, kernel_w]
+            x: Input feature [B, C, H, W]
+            w: Style descriptor [B, style_dim, kernel_h, kernel_w]
             
         Returns:
-            风格化图像 [B, 3, H_out, W_out]
+            Stylized image [B, 3, H_out, W_out]
         """
-        # 依次通过所有解码器块
+        # Process through all decoder blocks
         for layer in self.decoder_blocks:
             x = layer(x, w)
         return x

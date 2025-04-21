@@ -3,7 +3,6 @@ from torch import nn
 from torchvision import models
 from torchvision.transforms import transforms
 
-
 class Encoder(nn.Module):
     def __init__(self):
         super().__init__()
@@ -15,9 +14,8 @@ class Encoder(nn.Module):
 
         vgg19_feats = models.vgg19(weights=models.VGG19_Weights.IMAGENET1K_V1).features
 
-        # 修改：确保所有池化层使用兼容的下采样方法
+        # Modify: Ensure all pooling layers use compatible downsampling
         blocks = list()
-        # 修改：确保所有池化层使用兼容的下采样方法
         blocks.append(self._modify_pooling(nn.Sequential(*vgg19_feats[:2])))  # input -> relu1_1
         blocks.append(self._modify_pooling(nn.Sequential(*vgg19_feats[2:7])))  # relu1_1 -> relu2_1
         blocks.append(self._modify_pooling(nn.Sequential(*vgg19_feats[7:12])))  # relu2_1 -> relu3_1
@@ -33,18 +31,18 @@ class Encoder(nn.Module):
                     layer.inplace = False
 
     def _modify_pooling(self, block):
-        """修改VGG块中的最大池化层，确保与ONNX常量折叠兼容"""
+        """Modify max pooling layers in VGG blocks for ONNX constant folding compatibility"""
         new_block = nn.Sequential()
         for layer in block:
             if isinstance(layer, nn.MaxPool2d) and (layer.stride != 1 or layer.kernel_size != 1):
-                # 替换为兼容ONNX常量折叠的池化层
+                # Replace with ONNX-compatible pooling
                 new_block.append(nn.MaxPool2d(
                     kernel_size=layer.kernel_size,
                     stride=layer.stride,
                     padding=layer.padding,
-                    dilation=1,  # 确保dilation=1
+                    dilation=1,  # Ensure dilation=1
                     return_indices=False,
-                    ceil_mode=False  # 使用floor模式以避免某些ONNX兼容性问题
+                    ceil_mode=False  # Use floor mode to avoid ONNX issues
                 ))
             else:
                 new_block.append(layer)

@@ -17,17 +17,17 @@ class StyleTransfer(nn.Module):
         export_config: Optional[Dict[str, Any]] = None
     ) -> None:
         """
-        AdaConv风格迁移模型
+        AdaConv Style Transfer Model
         
         Args:
-            image_shape: 输入图像尺寸 (高度, 宽度)
-            style_dim: 风格描述符通道数
-            style_kernel: 自适应卷积核尺寸
-            groups: 分组卷积的分组数，可以是单个整数或列表(每层不同分组)
-            export_config: 导出配置，包含以下可选字段:
-                - export_mode: 是否启用导出模式 (默认: False)
-                - fixed_batch_size: 导出时使用的固定批次大小 (默认: None)
-                - use_fixed_size: 是否使用固定空间尺寸 (默认: False)
+            image_shape: Input image dimensions (height, width)
+            style_dim: Number of style descriptor channels
+            style_kernel: Adaptive convolution kernel size
+            groups: Number of groups for grouped convolution, can be single integer or list (different grouping per layer)
+            export_config: Export configuration with optional fields:
+                - export_mode: Whether to enable export mode (default: False)
+                - fixed_batch_size: Fixed batch size for export (default: None)
+                - use_fixed_size: Whether to use fixed spatial dimensions (default: False)
         """
         super().__init__()
         self.image_shape = image_shape
@@ -35,18 +35,18 @@ class StyleTransfer(nn.Module):
         self.style_kernel = style_kernel
         self.groups = groups
         
-        # 处理导出配置
+        # Process export configuration
         self.export_config = export_config or {}
         self.export_mode = self.export_config.get('export_mode', False)
         self.fixed_batch_size = self.export_config.get('fixed_batch_size', None)
         self.use_fixed_size = self.export_config.get('use_fixed_size', False)
 
-        # 初始化编码器(VGG)
+        # Initialize encoder (VGG)
         self.encoder = Encoder()
         self.encoder.freeze()
         encoder_scale = self.encoder.scale_factor
         
-        # 计算编码器输出尺寸
+        # Calculate encoder output dimensions
         encoder_hw = None
         if self.use_fixed_size:
             encoder_hw = (
@@ -54,7 +54,7 @@ class StyleTransfer(nn.Module):
                 self.image_shape[1] // encoder_scale
             )
 
-        # 初始化全局风格编码器
+        # Initialize global style encoder
         self.global_style_encoder = GlobalStyleEncoder(
             style_feat_shape=(
                 self.style_dim,
@@ -70,7 +70,7 @@ class StyleTransfer(nn.Module):
             fixed_batch_size=self.fixed_batch_size
         )
         
-        # 初始化解码器
+        # Initialize decoder
         self.decoder = Decoder(
             style_dim=self.style_dim,
             style_kernel=self.style_kernel,
@@ -83,19 +83,19 @@ class StyleTransfer(nn.Module):
             }
         )
 
-        # 初始化权重
+        # Initialize weights
         self.apply(init_weights)
         
-        # 归一化设置
+        # Normalization settings
         self.freeze_normalization = False
 
     def set_export_mode(self, enabled: bool = True, fixed_batch_size: Optional[int] = None):
         """
-        设置模型的导出模式
+        Set model export mode
         
         Args:
-            enabled: 是否启用导出模式
-            fixed_batch_size: 导出时使用的固定批次大小
+            enabled: Whether to enable export mode
+            fixed_batch_size: Fixed batch size for export
         """
         self.export_mode = enabled
         if enabled and fixed_batch_size is not None:
@@ -103,7 +103,7 @@ class StyleTransfer(nn.Module):
         elif not enabled:
             self.fixed_batch_size = None
         
-        # 更新所有子模块的导出模式
+        # Update export mode for all submodules
         for module in self.modules():
             if hasattr(module, 'export_mode'):
                 module.export_mode = enabled
@@ -111,10 +111,10 @@ class StyleTransfer(nn.Module):
                 module.fixed_batch_size = fixed_batch_size
 
     def freeze_normalization_layers(self):
-        """冻结所有归一化层"""
+        """Freeze all normalization layers"""
         for m in self.modules():
             if isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d, nn.LayerNorm)):
-                m.eval()  # 冻结统计量计算
+                m.eval()  # Freeze statistics computation
                 if hasattr(m, 'weight') and m.weight is not None:
                     m.weight.requires_grad_(False)
                 if hasattr(m, 'bias') and m.bias is not None:
@@ -123,57 +123,57 @@ class StyleTransfer(nn.Module):
 
     def forward(self, content: torch.Tensor, style: torch.Tensor) -> torch.Tensor:
         """
-        前向传播 - 返回风格迁移结果
+        Forward pass - returns style transfer result
         
         Args:
-            content: 内容图像 [B, 3, H, W]
-            style: 风格图像 [B, 3, H, W]
+            content: Content image [B, 3, H, W]
+            style: Style image [B, 3, H, W]
             
         Returns:
-            风格化后的内容图像 [B, 3, H, W]
+            Stylized content image [B, 3, H, W]
         """
-        # 评估模式下冻结归一化层
+        # Freeze normalization layers in evaluation mode
         if not self.training and not self.freeze_normalization:
             self.freeze_normalization_layers()
             
-        # 提取内容和风格特征
+        # Extract content and style features
         content_feats = self.encoder(content)
         style_feats = self.encoder(style)
         
-        # 生成风格描述符
+        # Generate style descriptor
         w = self.global_style_encoder(style_feats[-1])
         
-        # 解码生成风格化图像
+        # Decode to generate stylized image
         x = self.decoder(content_feats[-1], w)
         
         return x
 
     def forward_with_features(self, content: torch.Tensor, style: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor], List[torch.Tensor], List[torch.Tensor]]:
         """
-        前向传播 - 返回风格迁移结果和中间特征(用于训练和损失计算)
+        Forward pass - returns style transfer result and intermediate features (for training and loss computation)
         
         Args:
-            content: 内容图像 [B, 3, H, W]
-            style: 风格图像 [B, 3, H, W]
+            content: Content image [B, 3, H, W]
+            style: Style image [B, 3, H, W]
             
         Returns:
             (x, content_feats, style_feats, x_feats):
-                x: 风格化后的内容图像 [B, 3, H, W]
-                content_feats: 内容特征列表
-                style_feats: 风格特征列表
-                x_feats: 输出特征列表
+                x: Stylized content image [B, 3, H, W]
+                content_feats: List of content features
+                style_feats: List of style features
+                x_feats: List of output features
         """
-        # 提取内容和风格特征
+        # Extract content and style features
         content_feats = self.encoder(content)
         style_feats = self.encoder(style)
         
-        # 生成风格描述符
+        # Generate style descriptor
         w = self.global_style_encoder(style_feats[-1])
         
-        # 解码生成风格化图像
+        # Decode to generate stylized image
         x = self.decoder(content_feats[-1], w)
         
-        # 提取输出特征(用于计算损失)
+        # Extract output features (for loss computation)
         x_feats = self.encoder(x)
         
         return x, content_feats, style_feats, x_feats

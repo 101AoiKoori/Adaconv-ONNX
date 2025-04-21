@@ -5,19 +5,15 @@
 #### 训练
 - python train.py -c ./configs/lambda100.yaml -d ./data/raw -l ./logs</br>
 #### 微调
-- python train.py -c ./configs/lambda100.yaml -d ./data/256 --finetune</br>
+- python train.py -c ./configs/lambda100.yaml -d ./data/finetune --finetune</br>
 ---
 ### <p>查看数据</p>
 - tensorboard --logdir=./logs/tensorboard</br>
 - tensorboard --logdir=./logs/finetune/tensorboard</br>
-- python script_visualization.py</br>
+- python visualizer.py</br>
 ---
 ### <p>导出ONNX</p>
-- python script_export.py --output model.onnx</br>
----
-### <p>测试ONNX</p>
-- python script_visualization.py  or  python onnx_validator.py --onnx model.onnx --input-shape "content:1,3,256,256" "style:1,3,256,256"</br>
----
-### <p>测试模型</p>
-- python test.py</br>
-- Python cuda_test.py</br>
+- python exporter.py --output model.onnx  # Use default settings</br>
+- python exporter.py --output model.onnx --static  # Static mode</br>
+- python exporter.py --output model.onnx --dynamic  # Fully dynamic mode</br>
+- python exporter.py --output model.onnx --dynamic-batch  # Dynamic batch size</br>
