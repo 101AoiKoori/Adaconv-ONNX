@@ -17,7 +17,7 @@ num_iteration: 160000
 
 # Logging parameters
 log_step: 10
-save_step: 100
+save_step: 10000
 summary_step: 160
 max_ckpts: 3
 resize_size: 512
